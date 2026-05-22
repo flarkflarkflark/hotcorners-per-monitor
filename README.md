@@ -3,6 +3,7 @@
 Per-monitor hot corners and edge-midpoints for KDE Plasma/KWin.
 
 Hot Corners Per Monitor is a small KDE Plasma/KWin utility for something Plasma does not currently expose in the UI: configurable hot zones for each individual monitor, including inner monitor edges and corners that Plasma's built-in Screen Edges cannot target cleanly.
+Works with single-monitor setups too, but is mainly useful for multi-monitor layouts where Plasma's built-in Screen Edges cannot target inner monitor edges and corners cleanly.
 
 ![Status](https://img.shields.io/badge/Plasma-6-blueviolet)
 ![License](https://img.shields.io/badge/license-GPL--3.0--or--later-green)
