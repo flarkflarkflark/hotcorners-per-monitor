@@ -156,16 +156,18 @@ Pull requests with translations are very welcome.
 - Action types: none, invoke shortcut (built-in catalogue + custom)
 - Translations: English, Dutch, German
 
-### v0.4 (next)
+### v0.2.0
 - Direct command execution as an action type (in addition to shortcuts)
-- "Tap vs linger" — short touch does action A, holding for N ms does action B
 - Cooldown per corner to prevent rapid double-fires
 - French, Spanish, Italian translations
 
-### v0.5
-- Native KCM (System Settings module) replacing the standalone PyQt6 GUI
+### v0.3.0
+- "Tap vs linger" — short touch does action A, holding for N ms does action B
 - Per-activity configuration
 - Per-virtual-desktop configuration
+
+### v0.4.0+
+- Native KCM (System Settings module) replacing the standalone PyQt6 GUI
 
 ### Long-term
 - Propose for inclusion in `plasma-workspace` as the new default Screen Edges KCM behaviour
