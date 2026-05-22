@@ -1,0 +1,221 @@
+# Dutch translation for hotcorners-config
+# Copyright (C) 2026 flark
+# This file is distributed under the same license as the hotcorners-config package.
+# flark <https://github.com/flarkflarkflark>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: hotcorners-config 0.3.1\n"
+"Report-Msgid-Bugs-To: https://github.com/flarkflarkflark/hotcorners-per-"
+"monitor/issues\n"
+"POT-Creation-Date: 2026-05-20 20:27+0000\n"
+"PO-Revision-Date: 2026-05-20 12:00+0200\n"
+"Last-Translator: flark\n"
+"Language-Team: Dutch\n"
+"Language: nl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: hotcorners_config.py:115
+msgid "Overview (show all windows)"
+msgstr "Overview (alle vensters tonen)"
+
+#: hotcorners_config.py:116
+msgid "Grid View (virtual desktops)"
+msgstr "Rasterweergave (virtuele bureaubladen)"
+
+#: hotcorners_config.py:117
+msgid "Show Desktop"
+msgstr "Bureaublad tonen"
+
+#: hotcorners_config.py:118
+msgid "Cycle Overview / Grid"
+msgstr "Wissel tussen Overview / Raster"
+
+#: hotcorners_config.py:119
+msgid "Maximize active window"
+msgstr "Actief venster maximaliseren"
+
+#: hotcorners_config.py:120
+msgid "Minimize active window"
+msgstr "Actief venster minimaliseren"
+
+#: hotcorners_config.py:121
+msgid "Close active window"
+msgstr "Actief venster sluiten"
+
+#: hotcorners_config.py:122
+msgid "Edit tile layout"
+msgstr "Tegelindeling bewerken"
+
+#: hotcorners_config.py:123
+msgid "Application launcher"
+msgstr "Toepassingsstarter"
+
+#: hotcorners_config.py:124
+msgid "Show plasma menu at cursor"
+msgstr "Plasma-menu tonen bij cursor"
+
+#: hotcorners_config.py:125
+msgid "Lock screen"
+msgstr "Scherm vergrendelen"
+
+#: hotcorners_config.py:126
+msgid "Log out…"
+msgstr "Afmelden…"
+
+#: hotcorners_config.py:144
+msgid "Top-left"
+msgstr "Linksboven"
+
+#: hotcorners_config.py:144
+msgid "Top"
+msgstr "Boven"
+
+#: hotcorners_config.py:144
+msgid "Top-right"
+msgstr "Rechtsboven"
+
+#: hotcorners_config.py:144
+msgid "Left"
+msgstr "Links"
+
+#: hotcorners_config.py:144
+msgid "Right"
+msgstr "Rechts"
+
+#: hotcorners_config.py:145
+msgid "Bottom-left"
+msgstr "Linksonder"
+
+#: hotcorners_config.py:145
+msgid "Bottom"
+msgstr "Onder"
+
+#: hotcorners_config.py:145
+msgid "Bottom-right"
+msgstr "Rechtsonder"
+
+#: hotcorners_config.py:410
+msgid "No action"
+msgstr "Geen actie"
+
+#: hotcorners_config.py:411
+msgid "Trigger shortcut"
+msgstr "Sneltoets uitvoeren"
+
+#: hotcorners_config.py:413
+msgid "Action:"
+msgstr "Actie:"
+
+#: hotcorners_config.py:418
+msgid "Custom shortcut…"
+msgstr "Aangepaste sneltoets…"
+
+#: hotcorners_config.py:420
+msgid "Shortcut:"
+msgstr "Sneltoets:"
+
+#: hotcorners_config.py:424
+msgid "e.g. kwin"
+msgstr "bijv. kwin"
+
+#: hotcorners_config.py:426
+msgid "Component:"
+msgstr "Component:"
+
+#: hotcorners_config.py:430
+msgid "e.g. Overview"
+msgstr "bijv. Overview"
+
+#: hotcorners_config.py:432
+msgid "Shortcut name:"
+msgstr "Sneltoetsnaam:"
+
+#: hotcorners_config.py:528
+msgid "Pushing the cursor against this corner/edge does nothing."
+msgstr "De cursor tegen deze hoek/rand duwen doet niets."
+
+#: hotcorners_config.py:532
+msgid ""
+"Find shortcut names with: <code>qdbus6 org.kde.kglobalaccel /component/&lt;"
+"component&gt; org.kde.kglobalaccel.Component.shortcutNames</code>"
+msgstr ""
+"Vind sneltoetsnamen via: <code>qdbus6 org.kde.kglobalaccel /component/&lt;"
+"component&gt; org.kde.kglobalaccel.Component.shortcutNames</code>"
+
+#: hotcorners_config.py:539
+msgid ""
+"The selected shortcut will be invoked when the cursor is pushed against this "
+"corner/edge."
+msgstr ""
+"De gekozen sneltoets wordt uitgevoerd wanneer de cursor tegen deze hoek/rand "
+"wordt geduwd."
+
+#: hotcorners_config.py:557
+msgid "Hot Corners Per Monitor"
+msgstr "Hot Corners per Monitor"
+
+#: hotcorners_config.py:577
+msgid ""
+"<b>Tip:</b> Disable the standard KDE hot corners in System Settings → Screen "
+"Edges before relying on this script, otherwise both will fire."
+msgstr ""
+"<b>Tip:</b> Schakel de standaard KDE hot corners eerst uit in "
+"Systeeminstellingen → Schermranden, anders triggeren beide tegelijk."
+
+#: hotcorners_config.py:595
+msgid "Monitor arrangement — click a corner or edge to configure"
+msgstr "Monitor-indeling — klik op een hoek of rand om te configureren"
+
+#: hotcorners_config.py:605
+msgid "Select a corner above"
+msgstr "Kies een hoek hierboven"
+
+#: hotcorners_config.py:625
+msgid "Reload from disk"
+msgstr "Opnieuw inladen"
+
+#: hotcorners_config.py:628
+msgid "Close"
+msgstr "Sluiten"
+
+#: hotcorners_config.py:631
+msgid "Apply"
+msgstr "Toepassen"
+
+#: hotcorners_config.py:649
+#, python-brace-format
+msgid "{position} of {monitor}"
+msgstr "{position} van {monitor}"
+
+#: hotcorners_config.py:674
+msgid "Saved"
+msgstr "Opgeslagen"
+
+#: hotcorners_config.py:675
+msgid ""
+"Configuration saved. KWin has been reloaded — your changes are active now."
+msgstr ""
+"Configuratie opgeslagen. KWin is opnieuw geladen — je wijzigingen zijn nu "
+"actief."
+
+#: hotcorners_config.py:680
+msgid "Save failed"
+msgstr "Opslaan mislukt"
+
+#: hotcorners_config.py:681
+msgid ""
+"Could not write the configuration. Check that kwriteconfig6 is available on "
+"your system."
+msgstr ""
+"Kon de configuratie niet wegschrijven. Controleer of kwriteconfig6 "
+"beschikbaar is op je systeem."
+
+#, python-brace-format
+#~ msgid "Output: <code>{name}</code> · {w}×{h} at ({x}, {y})"
+#~ msgstr "Uitvoer: <code>{name}</code> · {w}×{h} op ({x}, {y})"
+
+#~ msgid "(monitor)"
+#~ msgstr "(monitor)"

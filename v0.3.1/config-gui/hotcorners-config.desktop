@@ -1,0 +1,18 @@
+[Desktop Entry]
+Type=Application
+Name=Hot Corners Per Monitor
+Name[nl]=Hot Corners per Monitor
+Name[de]=Aktive Bildschirmecken pro Monitor
+GenericName=Hot Corner Configuration
+GenericName[nl]=Hot Corner instellingen
+GenericName[de]=Konfiguration aktiver Bildschirmecken
+Comment=Configure per-monitor hot corners and edges
+Comment[nl]=Configureer hot corners en randen per monitor
+Comment[de]=Aktive Bildschirmecken und -kanten pro Monitor konfigurieren
+Exec=hotcorners-config
+Icon=preferences-desktop-display
+Categories=Qt;KDE;Settings;DesktopSettings;
+Keywords=hot corner;screen edge;multi-monitor;
+Keywords[nl]=hot corner;schermrand;multi-monitor;monitor;
+Keywords[de]=ecke;bildschirmrand;multi-monitor;
+StartupNotify=true
