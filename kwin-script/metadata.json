@@ -7,7 +7,7 @@
                 "Email": ""
             }
         ],
-        "Description": "Per-monitor hot corners. Configure each corner and edge of each connected display independently — essential for multi-monitor setups where adjacent inner corners otherwise interfere.",
+        "Description": "Hot corners and edge-midpoints for each monitor.",
         "Description[nl]": "Hot corners per monitor. Stel elke hoek en rand van elk aangesloten scherm onafhankelijk in — onmisbaar bij multi-monitor setups waar de aangrenzende binnenhoeken anders met elkaar conflicteren.",
         "Description[de]": "Aktive Bildschirmecken pro Monitor. Konfigurieren Sie jede Ecke und Kante jedes angeschlossenen Bildschirms unabhängig voneinander — unverzichtbar bei Multi-Monitor-Setups, bei denen sich die angrenzenden Innenecken sonst gegenseitig stören.",
         "Id": "hotcorners-per-monitor",

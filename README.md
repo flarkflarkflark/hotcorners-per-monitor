@@ -167,7 +167,7 @@ Pull requests with translations are very welcome.
 - Per-virtual-desktop configuration
 
 ### v0.4.0+
-- Native KCM (System Settings module) replacing the standalone PyQt6 GUI
+- Native KWin/System Settings configuration integration
 
 ### Long-term
 - Propose for inclusion in `plasma-workspace` as the new default Screen Edges KCM behaviour
