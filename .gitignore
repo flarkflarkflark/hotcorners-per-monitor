@@ -13,3 +13,10 @@ dist/
 .*.swp
 .DS_Store
 .directory
+*.code-workspace
+.snapshots/
+keep_local/
+v0.1/
+v0.2/
+v0.3/
+v0.3.1/

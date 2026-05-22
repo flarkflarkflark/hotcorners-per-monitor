@@ -15,7 +15,7 @@
         "Name": "Hot Corners Per Monitor",
         "Name[nl]": "Hot Corners per Monitor",
         "Name[de]": "Aktive Bildschirmecken pro Monitor",
-        "Version": "0.3.1",
+        "Version": "0.1.0",
         "Website": "https://github.com/flarkflarkflark/hotcorners-per-monitor"
     },
     "X-Plasma-API": "javascript",

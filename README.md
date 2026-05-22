@@ -1,6 +1,8 @@
 # Hot Corners Per Monitor
 
-A KWin script for KDE Plasma 6 that brings **per-monitor hot corner and screen-edge configuration** — solving a long-standing pain point in multi-monitor setups where the standard KDE "Screen Edges" only allow global configuration, causing the inner corners (where two monitors meet) to fire actions you never wanted.
+Per-monitor hot corners and edge-midpoints for KDE Plasma/KWin.
+
+Hot Corners Per Monitor is a small KDE Plasma/KWin utility for something Plasma does not currently expose in the UI: configurable hot zones for each individual monitor, including inner monitor edges and corners that Plasma's built-in Screen Edges cannot target cleanly.
 
 ![Status](https://img.shields.io/badge/Plasma-6-blueviolet)
 ![License](https://img.shields.io/badge/license-GPL--3.0--or--later-green)
@@ -14,7 +16,7 @@ This project gives every corner and edge of every connected monitor its own inde
 ## Features
 
 - **Visual monitor layout** — see your actual screen arrangement at scale and click directly on the corner or edge you want to configure. Configured handles are highlighted so you see your setup at a glance.
-- **8 hot zones per monitor** (4 corners + 4 edge midpoints), configured independently.
+- **8 hot zones per monitor: 4 corners + 4 edge midpoints**, configured independently.
 - **Monitor identification by output name** (e.g. `DP-1`, `HDMI-A-1`) — stable across reboots and cable swaps.
 - **Action types:** none, or invoke any KDE global shortcut (`Overview`, `Grid View`, `Show Desktop`, lock screen, application launcher, or any custom shortcut name).
 - **Scales gracefully** from one monitor to many. Tested with up to six displays in mixed arrangements (side-by-side, stacked, ultrawide+laptop).
@@ -147,7 +149,7 @@ Pull requests with translations are very welcome.
 
 ## Roadmap
 
-### v0.3 (current)
+### v0.1.0 (initial public release)
 - Visual monitor arrangement canvas with click-to-configure handles
 - All 8 hot zones per monitor (4 corners + 4 edge midpoints), monitor matching by output name
 - Action types: none, invoke shortcut (built-in catalogue + custom)
