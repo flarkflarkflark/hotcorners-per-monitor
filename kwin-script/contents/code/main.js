@@ -94,6 +94,60 @@ function createV2Binding(action, cooldownMs = DEFAULT_COOLDOWN_MS) {
     return {action: normalizedAction, cooldownMs};
 }
 
+function decideCooldown(state, outputName, position, cooldownMs, nowMs) {
+    if (!isObject(state) || !Array.isArray(state.entries)) {
+        throw new TypeError("state.entries must be an array");
+    }
+    if (typeof outputName !== "string" || !outputName) {
+        throw new TypeError("outputName must be a non-empty string");
+    }
+    if (typeof position !== "string" || !position) {
+        throw new TypeError("position must be a non-empty string");
+    }
+    if (!validCooldown(cooldownMs)) {
+        throw new RangeError("cooldownMs must be a non-negative integer");
+    }
+    if (typeof nowMs !== "number" || !Number.isFinite(nowMs) || nowMs < 0) {
+        throw new RangeError("nowMs must be a finite non-negative number");
+    }
+
+    const entryIndex = state.entries.findIndex(entry =>
+        isObject(entry) &&
+        entry.outputName === outputName &&
+        entry.position === position
+    );
+    if (entryIndex === -1) {
+        const entries = state.entries.slice();
+        entries.push({outputName, position, lastTriggeredMs: nowMs});
+        return {
+            allowed: true,
+            reason: "first-trigger",
+            state: Object.assign({}, state, {entries}),
+        };
+    }
+
+    const entry = state.entries[entryIndex];
+    const lastTriggeredMs = entry.lastTriggeredMs;
+    if (typeof lastTriggeredMs !== "number" ||
+        !Number.isFinite(lastTriggeredMs) || lastTriggeredMs < 0) {
+        throw new TypeError("state contains an invalid lastTriggeredMs");
+    }
+    if (nowMs < lastTriggeredMs) {
+        return {allowed: false, reason: "clock-regression", state};
+    }
+    if (nowMs - lastTriggeredMs < cooldownMs) {
+        return {allowed: false, reason: "cooldown-active", state};
+    }
+
+    const entries = state.entries.slice();
+    entries[entryIndex] = Object.assign({}, entry, {lastTriggeredMs: nowMs});
+    return {
+        allowed: true,
+        reason: "cooldown-elapsed",
+        state: Object.assign({}, state, {entries}),
+    };
+}
+
 function normalizeMonitors(monitors, legacy) {
     if (!isObject(monitors)) throw new Error("monitors must be an object");
 
