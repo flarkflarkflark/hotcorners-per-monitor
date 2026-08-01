@@ -1,0 +1,8 @@
+{
+  "unloadScript": true,
+  "isScriptLoadedAfterWait": false,
+  "installedPackagePresent": false,
+  "journalCursorPresent": false,
+  "postUnloadWaitSeconds": 6,
+  "unexpectedTimeoutMarkers": 0
+}
