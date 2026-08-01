@@ -38,6 +38,108 @@ const POSITIONS = {
     Left:        KWin.ElectricLeft,
 };
 
+const SCHEMA_VERSION = 2;
+const DEFAULT_COOLDOWN_MS = 350;
+const LEGACY_COOLDOWN_MS = 0;
+const MAX_COOLDOWN_MS = 10000;
+
+function isObject(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function cloneJson(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeAction(action) {
+    if (!isObject(action)) return null;
+
+    if (action.type === "none") {
+        return cloneJson(action);
+    }
+    if (action.type === "shortcut") {
+        if (typeof action.component === "string" && action.component &&
+            typeof action.name === "string" && action.name) {
+            return cloneJson(action);
+        }
+        return null;
+    }
+    if (action.type === "command") {
+        if (typeof action.program === "string" && action.program &&
+            Array.isArray(action.arguments) &&
+            action.arguments.every(arg => typeof arg === "string")) {
+            return cloneJson(action);
+        }
+    }
+    return null;
+}
+
+function validCooldown(value) {
+    return Number.isInteger(value) &&
+           value >= 0 && value <= MAX_COOLDOWN_MS;
+}
+
+function createV2Binding(action, cooldownMs = DEFAULT_COOLDOWN_MS) {
+    const normalizedAction = normalizeAction(action);
+    if (!normalizedAction) throw new Error("invalid action");
+    if (!validCooldown(cooldownMs)) throw new Error("invalid cooldownMs");
+    return {action: normalizedAction, cooldownMs};
+}
+
+function normalizeMonitors(monitors, legacy) {
+    if (!isObject(monitors)) throw new Error("monitors must be an object");
+
+    const normalized = {};
+    for (const outputName of Object.keys(monitors)) {
+        const monitor = monitors[outputName];
+        if (!outputName || !isObject(monitor)) continue;
+
+        const normalizedMonitor = {};
+        for (const position of Object.keys(monitor)) {
+            if (!Object.prototype.hasOwnProperty.call(POSITIONS, position)) continue;
+
+            if (legacy) {
+                const action = normalizeAction(monitor[position]);
+                if (!action) continue;
+                normalizedMonitor[position] = {
+                    action,
+                    cooldownMs: LEGACY_COOLDOWN_MS,
+                };
+                continue;
+            }
+
+            const value = monitor[position];
+            if (!isObject(value)) continue;
+            const action = normalizeAction(value.action);
+            if (!action || !validCooldown(value.cooldownMs)) continue;
+            const binding = cloneJson(value);
+            binding.action = action;
+            binding.cooldownMs = value.cooldownMs;
+            normalizedMonitor[position] = binding;
+        }
+        normalized[outputName] = normalizedMonitor;
+    }
+    return normalized;
+}
+
+function normalizeConfigToV2(config) {
+    if (!isObject(config)) throw new Error("configuration root must be an object");
+
+    if (!Object.prototype.hasOwnProperty.call(config, "schemaVersion")) {
+        return {
+            schemaVersion: SCHEMA_VERSION,
+            monitors: normalizeMonitors(config, true),
+        };
+    }
+    if (config.schemaVersion !== SCHEMA_VERSION) {
+        throw new Error("unsupported schema version: " + config.schemaVersion);
+    }
+
+    const normalized = cloneJson(config);
+    normalized.monitors = normalizeMonitors(config.monitors, false);
+    return normalized;
+}
+
 let monitorConfigs = {};
 
 function loadConfig() {
