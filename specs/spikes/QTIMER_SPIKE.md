@@ -67,6 +67,16 @@ missing or duplicate callbacks, rejects any measured duration below the
 requested interval, and reports callbacks more than five seconds late as a
 stall signal.
 
+### Fedora 43 probe portability correction
+
+The first Plasma 6.4 Wayland attempt exposed two probe-only portability bugs:
+KWin 6.4 has no global `print()` and Fedora names the Qt 6 D-Bus client
+`qdbus-qt6`. Runtime diagnostics proved that `console.warn()` reaches journald
+while `console.log()` is filtered. The probe now emits markers through
+`console.warn()` and detects `qdbus6` before falling back to `qdbus-qt6`. No
+QTimer test semantics or product code changed; that failed attempt is not gate
+evidence.
+
 ## Local environment
 
 | Field | Value |

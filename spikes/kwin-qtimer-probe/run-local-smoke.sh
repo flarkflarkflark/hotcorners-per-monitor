@@ -5,6 +5,7 @@ set -euo pipefail
 
 PACKAGE_ID="hotcorners-per-monitor-qtimer-probe"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${ROOT}/qt-dbus-client.sh"
 CURSOR_FILE="${XDG_RUNTIME_DIR:-/tmp}/${PACKAGE_ID}.cursor"
 OUTPUT_DIR="${1:-}"
 
@@ -62,7 +63,7 @@ python3 "${ROOT}/verify-log.py" \
     --cleanup-confirmed "${OUTPUT_DIR}/journal.log" \
     | tee "${OUTPUT_DIR}/verification.json"
 
-loaded="$(qdbus6 org.kde.KWin /Scripting \
+loaded="$("${QDBUS}" org.kde.KWin /Scripting \
     org.kde.kwin.Scripting.isScriptLoaded "${PACKAGE_ID}")"
 printf 'isScriptLoaded=%s\n' "${loaded}"
 printf 'Artifacts: %s\n' "${OUTPUT_DIR}"

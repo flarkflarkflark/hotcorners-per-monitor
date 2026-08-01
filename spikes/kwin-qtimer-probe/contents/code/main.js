@@ -9,7 +9,7 @@ const timers = [];
 
 function logMarker(fields) {
     fields.run = RUN;
-    print(MARKER + JSON.stringify(fields));
+    console.warn(MARKER + JSON.stringify(fields));
 }
 
 function makeTimer(test, id, intervalMs, callback) {

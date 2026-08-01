@@ -18,6 +18,11 @@ The committed `metadata.json` makes the directory a valid, uniquely identified
 KWin script package, but the smoke runner deliberately executes the source copy
 directly to avoid persistent installation state.
 
+Markers use `console.warn()` because Plasma 6.4's KWin script engine exposes the
+QJSEngine console but no global `print()`, and Fedora filters `console.log()` at
+debug level. Shell scripts prefer `qdbus6` and fall back to Fedora's equivalent
+`qdbus-qt6`; they stop clearly when neither Qt 6 D-Bus client exists.
+
 ## Official API basis
 
 - KWin Plasma 6.4 source, pinned branch head `4018344761abe6b7c5fb7b1c22374799f769cae6`:

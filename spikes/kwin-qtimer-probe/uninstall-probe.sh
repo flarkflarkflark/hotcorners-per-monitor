@@ -4,11 +4,11 @@
 set -euo pipefail
 
 PACKAGE_ID="hotcorners-per-monitor-qtimer-probe"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${ROOT}/qt-dbus-client.sh"
 CURSOR_FILE="${XDG_RUNTIME_DIR:-/tmp}/${PACKAGE_ID}.cursor"
 
-command -v qdbus6 >/dev/null
-
-unloaded="$(qdbus6 org.kde.KWin /Scripting \
+unloaded="$("${QDBUS}" org.kde.KWin /Scripting \
     org.kde.kwin.Scripting.unloadScript "${PACKAGE_ID}")"
 if [[ "${unloaded}" != "true" && "${unloaded}" != "false" ]]; then
     printf 'Unexpected unloadScript result: %s\n' "${unloaded}" >&2

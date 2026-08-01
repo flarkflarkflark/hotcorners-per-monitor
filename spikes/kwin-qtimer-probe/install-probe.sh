@@ -5,23 +5,23 @@ set -euo pipefail
 
 PACKAGE_ID="hotcorners-per-monitor-qtimer-probe"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${ROOT}/qt-dbus-client.sh"
 SCRIPT="${ROOT}/contents/code/main.js"
 CURSOR_FILE="${XDG_RUNTIME_DIR:-/tmp}/${PACKAGE_ID}.cursor"
 
-command -v qdbus6 >/dev/null
 command -v journalctl >/dev/null
 
-qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript \
+"${QDBUS}" org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript \
     "${PACKAGE_ID}" >/dev/null 2>&1 || true
 
 journalctl --user -n 0 --show-cursor --no-pager \
     | sed -n 's/^-- cursor: //p' >"${CURSOR_FILE}"
 test -s "${CURSOR_FILE}"
 
-script_id="$(qdbus6 org.kde.KWin /Scripting \
+script_id="$("${QDBUS}" org.kde.KWin /Scripting \
     org.kde.kwin.Scripting.loadScript "${SCRIPT}" "${PACKAGE_ID}")"
 cleanup_on_error() {
-    qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript \
+    "${QDBUS}" org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript \
         "${PACKAGE_ID}" >/dev/null 2>&1 || true
     rm -f "${CURSOR_FILE}"
 }
@@ -35,7 +35,7 @@ case "${script_id}" in
         ;;
 esac
 
-qdbus6 org.kde.KWin "/Scripting/Script${script_id}" \
+"${QDBUS}" org.kde.KWin "/Scripting/Script${script_id}" \
     org.kde.kwin.Script.run
 trap - ERR
 
