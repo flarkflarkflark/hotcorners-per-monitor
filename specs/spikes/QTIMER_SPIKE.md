@@ -2,10 +2,9 @@
 
 ## Conclusion: PARTIAL / BLOCKED
 
-The isolated probe passes on the available Plasma/KWin 6.7.3 Wayland session.
-This is supplementary smoke evidence only. Plasma/KWin 6.4 Wayland and X11
-were not available and are both **NOT RUN**, so timer-backed production
-cooldown is not approved.
+The isolated probe passes on Plasma/KWin 6.7.3 Wayland (supplementary) and on
+Plasma/KWin 6.4.5 Wayland (required gate). Plasma/KWin 6.4 X11 is still
+**NOT RUN**, so timer-backed production cooldown is not yet approved.
 
 ## Question
 
@@ -143,7 +142,7 @@ Qt and is reported rather than treated as a real-time guarantee.
 
 | Environment | Status | Missing evidence |
 |---|---|---|
-| Plasma/KWin 6.4 Wayland | **NOT RUN** | A real 6.4 Wayland session must run the committed probe and retain environment, journal, verifier, and cleanup output. |
+| Plasma/KWin 6.4 Wayland | **PASS** | Evidence retained under `specs/spikes/results/plasma-6.4-wayland/` (`environment.txt`, `verification.json`); run output confirms `unloaded=true` and `isScriptLoaded=false`. |
 | Plasma/KWin 6.4 X11 | **NOT RUN** | A real 6.4 X11 session must run the same probe and retain the same evidence. |
 
 No VM or KWin build environment was created because that requires separate
