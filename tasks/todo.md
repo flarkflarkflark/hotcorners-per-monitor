@@ -14,6 +14,7 @@
 - [x] Add Python/JavaScript test harness and v0.1 fixtures.
 - [x] Add normative v0.2 schema, zero-cooldown v0.1 migration and cross-language fixtures.
 - [x] Add invalid/stale configuration protection and unknown-field preservation.
+- [x] Normalize v0.1/v0.2 configuration in the KWin runtime.
 - [x] Add per-binding cooldown with fake-clock tests.
 - [ ] Add specified session-D-Bus command runner without implicit shell.
 - [ ] Install/remove the helper and D-Bus metadata through an ownership manifest.

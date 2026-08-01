@@ -6,9 +6,20 @@ const vm = require("node:vm");
 
 const ROOT = path.resolve(__dirname, "../..");
 const BACKEND_PATH = path.join(ROOT, "kwin-script/contents/code/main.js");
-const FIXTURE_PATH = path.join(ROOT, "tests/fixtures/v0.1-config.json");
 const backendSource = fs.readFileSync(BACKEND_PATH, "utf8");
-const legacyConfig = JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf8"));
+const legacyConfig = readFixture("v0.1-config.json");
+const v2Config = readFixture("v0.2-migrated-config.json");
+const extensionConfig = readFixture("v0.2-config-with-extensions.json");
+
+function readFixture(name) {
+    return JSON.parse(
+        fs.readFileSync(path.join(ROOT, "tests/fixtures", name), "utf8"),
+    );
+}
+
+function plain(value) {
+    return JSON.parse(JSON.stringify(value));
+}
 
 const ELECTRIC_BORDERS = {
     ElectricTopLeft: 0,
@@ -25,6 +36,10 @@ function createBackend(config = legacyConfig) {
     const callbacks = new Map();
     const dbusCalls = [];
     const prints = [];
+    const writes = [];
+    const rawConfig = typeof config === "string"
+        ? config
+        : JSON.stringify(config);
     const workspace = {
         cursorPos: {x: 100, y: 100},
         screens: [
@@ -41,9 +56,12 @@ function createBackend(config = legacyConfig) {
     const context = vm.createContext({
         KWin: ELECTRIC_BORDERS,
         workspace,
-        readConfig(key, fallback) {
+        readConfig(key) {
             assert.equal(key, "MonitorConfigs");
-            return config === undefined ? fallback : JSON.stringify(config);
+            return rawConfig;
+        },
+        writeConfig(...args) {
+            writes.push(args);
         },
         registerScreenEdge(border, callback) {
             callbacks.set(border, callback);
@@ -58,7 +76,7 @@ function createBackend(config = legacyConfig) {
     });
 
     vm.runInContext(backendSource, context, {filename: BACKEND_PATH});
-    return {callbacks, dbusCalls, prints, workspace};
+    return {callbacks, context, dbusCalls, prints, workspace, writes};
 }
 
 test("registers all eight KWin electric borders", () => {
@@ -108,4 +126,111 @@ test("does not dispatch a legacy none action", () => {
     backend.callbacks.get(ELECTRIC_BORDERS.ElectricBottomRight)();
 
     assert.deepEqual(backend.dbusCalls, []);
+});
+
+test("runtime load migrates v0.1 to v0.2 in memory without writing", () => {
+    const backend = createBackend(legacyConfig);
+
+    const config = plain(backend.context.loadRuntimeConfig());
+
+    assert.equal(config.schemaVersion, 2);
+    assert.equal(config.monitors["DP-1"].TopLeft.cooldownMs, 0);
+    assert.deepEqual(backend.writes, []);
+});
+
+test("dispatches a shortcut from normalized v0.2 config without writing", () => {
+    const backend = createBackend(v2Config);
+    backend.workspace.cursorPos = {x: 3500, y: 10};
+
+    backend.callbacks.get(ELECTRIC_BORDERS.ElectricTopRight)();
+
+    assert.equal(backend.dbusCalls.length, 1);
+    assert.equal(backend.dbusCalls[0][4], "Lock Session");
+    assert.deepEqual(backend.writes, []);
+});
+
+test("does not apply v0.2 cooldown during runtime dispatch yet", () => {
+    const config = structuredClone(v2Config);
+    config.monitors["DP-1"].TopLeft.cooldownMs = 350;
+    const backend = createBackend(config);
+    let cooldownCalls = 0;
+    backend.context.decideCooldown = () => {
+        cooldownCalls++;
+        throw new Error("cooldown must remain disconnected");
+    };
+
+    const callback = backend.callbacks.get(ELECTRIC_BORDERS.ElectricTopLeft);
+    callback();
+    callback();
+
+    assert.equal(backend.dbusCalls.length, 2);
+    assert.equal(cooldownCalls, 0);
+});
+
+test("does not dispatch explicit none from normalized v0.2 config", () => {
+    const backend = createBackend(v2Config);
+    const config = plain(backend.context.loadRuntimeConfig());
+
+    backend.callbacks.get(ELECTRIC_BORDERS.ElectricBottomRight)();
+
+    assert.equal(config.monitors["DP-1"].BottomRight.action.type, "none");
+    assert.deepEqual(backend.dbusCalls, []);
+});
+
+test("unsupported schema version fails closed without writing", () => {
+    const backend = createBackend({schemaVersion: 99, monitors: {}});
+
+    backend.callbacks.get(ELECTRIC_BORDERS.ElectricTopLeft)();
+
+    assert.deepEqual(backend.dbusCalls, []);
+    assert.deepEqual(backend.writes, []);
+    assert.equal(
+        backend.prints.some(args => args.join(" ").includes("failed to load config")),
+        true,
+    );
+});
+
+test("invalid JSON fails closed without writing or partial dispatch", () => {
+    const backend = createBackend('{"DP-1":{"TopLeft":');
+
+    backend.callbacks.get(ELECTRIC_BORDERS.ElectricTopLeft)();
+
+    assert.deepEqual(backend.dbusCalls, []);
+    assert.deepEqual(backend.writes, []);
+    assert.equal(
+        backend.prints.some(args => args.join(" ").includes("failed to load config")),
+        true,
+    );
+});
+
+test("invalid known binding is removed and cannot dispatch", () => {
+    const invalidConfig = structuredClone(v2Config);
+    invalidConfig.monitors["DP-1"].TopLeft.action.name = "";
+    const backend = createBackend(invalidConfig);
+    const config = plain(backend.context.loadRuntimeConfig());
+
+    backend.callbacks.get(ELECTRIC_BORDERS.ElectricTopLeft)();
+
+    assert.equal(Object.hasOwn(config.monitors["DP-1"], "TopLeft"), false);
+    assert.deepEqual(backend.dbusCalls, []);
+});
+
+test("unknown v0.2 fields do not affect known shortcut dispatch", () => {
+    const backend = createBackend(extensionConfig);
+
+    backend.callbacks.get(ELECTRIC_BORDERS.ElectricTopLeft)();
+
+    assert.equal(backend.dbusCalls.length, 1);
+    assert.equal(backend.dbusCalls[0][4], "Overview");
+});
+
+test("runtime normalization and dispatch do not mutate input fixtures", () => {
+    const input = structuredClone(extensionConfig);
+    const original = structuredClone(input);
+    const backend = createBackend(input);
+
+    backend.callbacks.get(ELECTRIC_BORDERS.ElectricTopLeft)();
+    backend.context.loadRuntimeConfig();
+
+    assert.deepEqual(input, original);
 });

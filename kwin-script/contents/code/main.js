@@ -207,17 +207,21 @@ function normalizeConfigToV2(config) {
     return normalized;
 }
 
-let monitorConfigs = {};
+let runtimeConfig = {schemaVersion: SCHEMA_VERSION, monitors: {}};
+
+function loadRuntimeConfig() {
+    const raw = readConfig("MonitorConfigs", "{}");
+    return normalizeConfigToV2(JSON.parse(raw));
+}
 
 function loadConfig() {
-    const raw = readConfig("MonitorConfigs", "{}");
     try {
-        monitorConfigs = JSON.parse(raw);
+        runtimeConfig = loadRuntimeConfig();
         print("hotcorners-per-monitor: config loaded for outputs:",
-              Object.keys(monitorConfigs).join(", ") || "(none)");
+              Object.keys(runtimeConfig.monitors).join(", ") || "(none)");
     } catch (e) {
-        print("hotcorners-per-monitor: failed to parse config:", e);
-        monitorConfigs = {};
+        print("hotcorners-per-monitor: failed to load config:", e);
+        runtimeConfig = {schemaVersion: SCHEMA_VERSION, monitors: {}};
     }
 }
 
@@ -259,11 +263,11 @@ function handleCorner(positionName) {
     if (!screen) return;
     const screenName = screen.name;
     if (!screenName) return;
-    const screenConfig = monitorConfigs[screenName];
+    const screenConfig = runtimeConfig.monitors[screenName];
     if (!screenConfig) return;
-    const action = screenConfig[positionName];
-    if (!action) return;
-    executeAction(action);
+    const binding = screenConfig[positionName];
+    if (!binding) return;
+    executeAction(binding.action);
 }
 
 // Bootstrap: load config + register all 8 corners/edges
