@@ -4,7 +4,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
-from subprocess import CompletedProcess
+from subprocess import CalledProcessError, CompletedProcess
 from unittest.mock import patch
 
 
@@ -28,17 +28,29 @@ def load_config_module():
 
 
 class FakeKWinPersistence:
-    def __init__(self, raw):
+    def __init__(self, raw=None, *, key_exists=True):
         self.raw = raw
+        self.key_exists = key_exists
         self.commands = []
         self.written_payloads = []
         self.reload_count = 0
+        self.fail_next_write = False
 
     def run(self, command, **kwargs):
         self.commands.append((command, kwargs))
         if command[0] == "kreadconfig6":
-            return CompletedProcess(command, 0, stdout=self.raw, stderr="")
+            if self.key_exists:
+                stdout = self.raw
+            elif "--default" in command:
+                stdout = command[command.index("--default") + 1]
+            else:
+                stdout = ""
+            return CompletedProcess(command, 0, stdout=stdout, stderr="")
         if command[0] == "kwriteconfig6":
+            if self.fail_next_write:
+                self.fail_next_write = False
+                raise CalledProcessError(1, command)
+            self.key_exists = True
             self.raw = command[-1]
             self.written_payloads.append(command[-1])
             return CompletedProcess(command, 0, stdout="", stderr="")
@@ -46,6 +58,22 @@ class FakeKWinPersistence:
             self.reload_count += 1
             return CompletedProcess(command, 0, stdout="", stderr="")
         raise AssertionError(f"unexpected command: {command}")
+
+    def external_set(self, raw):
+        self.key_exists = True
+        self.raw = raw
+
+    def external_delete(self):
+        self.key_exists = False
+        self.raw = None
+
+    @property
+    def read_count(self):
+        return sum(command[0] == "kreadconfig6" for command, _ in self.commands)
+
+    @property
+    def write_attempt_count(self):
+        return sum(command[0] == "kwriteconfig6" for command, _ in self.commands)
 
     @property
     def write_count(self):
@@ -67,63 +95,147 @@ class GuiPersistenceTests(unittest.TestCase):
         with patch.object(self.module.subprocess, "run", side_effect=fake.run):
             loaded = self.module.load_config()
 
-        self.assertEqual(loaded, self.v2)
+        self.assertEqual(loaded.document, self.v2)
+        self.assertTrue(loaded.baseline.key_exists)
         self.assertEqual(fake.raw, self.legacy_text)
         self.assertEqual(fake.write_count, 0)
         self.assertEqual(fake.reload_count, 0)
-        self.assertEqual(len(fake.commands), 1)
-        self.assertEqual(fake.commands[0][0][0], "kreadconfig6")
+        self.assertEqual(fake.read_count, 1)
 
     def test_load_v02_is_idempotent_and_does_not_write(self):
         fake = FakeKWinPersistence(self.v2_text)
 
         with patch.object(self.module.subprocess, "run", side_effect=fake.run):
-            first = self.module.load_config()
+            loaded = self.module.load_config()
 
-        self.assertEqual(first, self.v2)
-        self.assertEqual(self.module.normalize_config_to_v2(first), self.v2)
+        self.assertEqual(loaded.document, self.v2)
+        self.assertEqual(
+            self.module.normalize_config_to_v2(loaded.document), self.v2
+        )
         self.assertEqual(fake.raw, self.v2_text)
         self.assertEqual(fake.write_count, 0)
         self.assertEqual(fake.reload_count, 0)
 
-    def test_save_after_v01_load_writes_exact_v02_and_reloads_once(self):
+    def test_unchanged_baseline_writes_v02_and_reloads_once(self):
         fake = FakeKWinPersistence(self.legacy_text)
 
         with patch.object(self.module.subprocess, "run", side_effect=fake.run):
             loaded = self.module.load_config()
-            saved = self.module.save_config(loaded)
+            updated_baseline = self.module.save_config(
+                loaded.document, loaded.baseline
+            )
 
-        self.assertTrue(saved)
+        self.assertEqual(fake.read_count, 2)
         self.assertEqual(fake.write_count, 1)
         self.assertEqual(
             fake.written_payloads[0],
             json.dumps(self.v2, separators=(",", ":")),
         )
         self.assertEqual(fake.reload_count, 1)
-        self.assertEqual(fake.commands[1][0][4], "Script-hotcorners-per-monitor")
-        self.assertEqual(fake.commands[1][0][6], "MonitorConfigs")
+        self.assertEqual(updated_baseline.raw_value, fake.written_payloads[0])
+        write_command = next(
+            command for command, _ in fake.commands
+            if command[0] == "kwriteconfig6"
+        )
+        self.assertEqual(write_command[4], "Script-hotcorners-per-monitor")
+        self.assertEqual(write_command[6], "MonitorConfigs")
 
-    def test_second_save_serializes_without_migration_drift(self):
-        fake = FakeKWinPersistence(self.v2_text)
+    def test_external_change_between_load_and_save_raises_stale_error(self):
+        fake = FakeKWinPersistence(self.legacy_text)
+        external_raw = json.dumps({"schemaVersion": 2, "monitors": {}})
 
         with patch.object(self.module.subprocess, "run", side_effect=fake.run):
             loaded = self.module.load_config()
-            self.assertTrue(self.module.save_config(loaded))
-            self.assertTrue(self.module.save_config(loaded))
+            fake.external_set(external_raw)
+            with self.assertRaises(self.module.StaleConfigError):
+                self.module.save_config(loaded.document, loaded.baseline)
+
+        self.assertEqual(fake.raw, external_raw)
+        self.assertEqual(fake.write_attempt_count, 0)
+        self.assertEqual(fake.write_count, 0)
+        self.assertEqual(fake.reload_count, 0)
+
+    def test_external_delete_between_load_and_save_is_a_conflict(self):
+        fake = FakeKWinPersistence(self.legacy_text)
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            loaded = self.module.load_config()
+            fake.external_delete()
+            with self.assertRaises(self.module.StaleConfigError):
+                self.module.save_config(loaded.document, loaded.baseline)
+
+        self.assertFalse(fake.key_exists)
+        self.assertEqual(fake.write_attempt_count, 0)
+        self.assertEqual(fake.write_count, 0)
+        self.assertEqual(fake.reload_count, 0)
+
+    def test_external_add_after_missing_load_is_a_conflict(self):
+        fake = FakeKWinPersistence(key_exists=False)
+        external_raw = self.v2_text
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            loaded = self.module.load_config()
+            fake.external_set(external_raw)
+            with self.assertRaises(self.module.StaleConfigError):
+                self.module.save_config(loaded.document, loaded.baseline)
+
+        self.assertEqual(fake.raw, external_raw)
+        self.assertEqual(fake.write_attempt_count, 0)
+        self.assertEqual(fake.write_count, 0)
+        self.assertEqual(fake.reload_count, 0)
+
+    def test_second_own_save_uses_updated_baseline_without_false_conflict(self):
+        fake = FakeKWinPersistence(self.legacy_text)
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            loaded = self.module.load_config()
+            first_baseline = self.module.save_config(
+                loaded.document, loaded.baseline
+            )
+            second_baseline = self.module.save_config(
+                loaded.document, first_baseline
+            )
 
         self.assertEqual(fake.write_count, 2)
         self.assertEqual(fake.written_payloads[0], fake.written_payloads[1])
         self.assertEqual(fake.reload_count, 2)
+        self.assertEqual(second_baseline, first_baseline)
+
+    def test_failed_write_does_not_update_baseline_or_reload(self):
+        fake = FakeKWinPersistence(self.legacy_text)
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            loaded = self.module.load_config()
+            original_baseline = loaded.baseline
+            fake.fail_next_write = True
+            failed_baseline = self.module.save_config(
+                loaded.document, original_baseline
+            )
+
+            self.assertIsNone(failed_baseline)
+            self.assertEqual(loaded.baseline, original_baseline)
+            self.assertEqual(fake.reload_count, 0)
+
+            fake.external_set(self.v2_text)
+            with self.assertRaises(self.module.StaleConfigError):
+                self.module.save_config(loaded.document, original_baseline)
+
+        self.assertEqual(fake.write_attempt_count, 1)
+        self.assertEqual(fake.write_count, 0)
+        self.assertEqual(fake.reload_count, 0)
 
     def test_explicit_none_survives_load_and_save(self):
         fake = FakeKWinPersistence(self.legacy_text)
 
         with patch.object(self.module.subprocess, "run", side_effect=fake.run):
             loaded = self.module.load_config()
-            self.assertTrue(self.module.save_config(loaded))
+            updated_baseline = self.module.save_config(
+                loaded.document, loaded.baseline
+            )
 
+        self.assertIsNotNone(updated_baseline)
         self.assertEqual(
-            loaded["monitors"]["DP-1"]["BottomRight"]["action"],
+            loaded.document["monitors"]["DP-1"]["BottomRight"]["action"],
             {"type": "none"},
         )
         written = json.loads(fake.written_payloads[0])
@@ -135,6 +247,7 @@ class GuiPersistenceTests(unittest.TestCase):
     def test_invalid_or_unsupported_load_cannot_be_saved(self):
         invalid_values = (
             "{not-json",
+            "__HOTCORNERS_PER_MONITOR_MISSING__",
             json.dumps({"schemaVersion": 3, "contexts": {}}),
         )
         for raw in invalid_values:
@@ -144,25 +257,30 @@ class GuiPersistenceTests(unittest.TestCase):
                     self.module.subprocess, "run", side_effect=fake.run
                 ):
                     loaded = self.module.load_config()
-                    saved = self.module.save_config(loaded)
+                    saved_baseline = self.module.save_config(
+                        loaded.document, loaded.baseline
+                    )
 
-                self.assertIsNone(loaded)
-                self.assertFalse(saved)
+                self.assertIsNone(loaded.document)
+                self.assertIsNone(saved_baseline)
                 self.assertEqual(fake.raw, raw)
+                self.assertEqual(fake.write_attempt_count, 0)
                 self.assertEqual(fake.write_count, 0)
                 self.assertEqual(fake.reload_count, 0)
 
-    def test_load_and_save_do_not_mutate_input_objects(self):
+    def test_stale_check_does_not_mutate_model_baseline_or_fixtures(self):
         fake = FakeKWinPersistence(self.legacy_text)
         legacy_before = copy.deepcopy(self.legacy)
 
         with patch.object(self.module.subprocess, "run", side_effect=fake.run):
             loaded = self.module.load_config()
-            loaded_before = copy.deepcopy(loaded)
-            self.assertTrue(self.module.save_config(loaded))
+            document_before = copy.deepcopy(loaded.document)
+            baseline_before = loaded.baseline
+            self.module.save_config(loaded.document, loaded.baseline)
 
         self.assertEqual(self.legacy, legacy_before)
-        self.assertEqual(loaded, loaded_before)
+        self.assertEqual(loaded.document, document_before)
+        self.assertEqual(loaded.baseline, baseline_before)
 
 
 if __name__ == "__main__":

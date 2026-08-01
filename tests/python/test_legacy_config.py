@@ -61,8 +61,11 @@ class LegacyConfigPersistenceTests(unittest.TestCase):
         with patch.object(self.module.subprocess, "run", return_value=result) as run:
             loaded = self.module.load_config()
 
-        self.assertEqual(loaded, self.migrated_config)
-        run.assert_called_once_with(
+        self.assertEqual(loaded.document, self.migrated_config)
+        run.assert_called_once()
+        command = run.call_args.args[0]
+        self.assertEqual(
+            command[:7],
             [
                 "kreadconfig6",
                 "--file",
@@ -72,19 +75,39 @@ class LegacyConfigPersistenceTests(unittest.TestCase):
                 "--key",
                 "MonitorConfigs",
             ],
-            capture_output=True,
-            text=True,
-            check=False,
+        )
+        self.assertEqual(command[7], "--default")
+        self.assertTrue(
+            command[8].startswith(self.module.MISSING_CONFIG_SENTINEL_PREFIX)
+        )
+        self.assertEqual(
+            run.call_args.kwargs,
+            {"capture_output": True, "text": True, "check": False},
         )
 
     def test_save_config_normalizes_legacy_shape_and_reconfigures_kwin(self):
-        with patch.object(self.module.subprocess, "run") as run:
-            saved = self.module.save_config(self.legacy_config)
+        raw = FIXTURE_PATH.read_text(encoding="utf-8")
+        read_result = CompletedProcess(
+            args=["kreadconfig6"], returncode=0,
+            stdout=raw, stderr="",
+        )
+        command_result = CompletedProcess(
+            args=[], returncode=0, stdout="", stderr="",
+        )
+        with patch.object(
+            self.module.subprocess, "run",
+            side_effect=[read_result, read_result,
+                         command_result, command_result],
+        ) as run:
+            loaded = self.module.load_config()
+            updated_baseline = self.module.save_config(
+                self.legacy_config, loaded.baseline
+            )
 
-        self.assertTrue(saved)
-        self.assertEqual(run.call_count, 2)
+        self.assertIsNotNone(updated_baseline)
+        self.assertEqual(run.call_count, 4)
         self.assertEqual(
-            run.call_args_list[0].args[0],
+            run.call_args_list[2].args[0],
             [
                 "kwriteconfig6",
                 "--file",
@@ -96,12 +119,12 @@ class LegacyConfigPersistenceTests(unittest.TestCase):
                 json.dumps(self.migrated_config, separators=(",", ":")),
             ],
         )
-        self.assertTrue(run.call_args_list[0].kwargs["check"])
+        self.assertTrue(run.call_args_list[2].kwargs["check"])
         self.assertEqual(
-            run.call_args_list[1].args[0],
+            run.call_args_list[3].args[0],
             ["qdbus6", "org.kde.KWin", "/KWin", "reconfigure"],
         )
-        self.assertFalse(run.call_args_list[1].kwargs["check"])
+        self.assertFalse(run.call_args_list[3].kwargs["check"])
 
 
 if __name__ == "__main__":

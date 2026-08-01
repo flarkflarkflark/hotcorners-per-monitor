@@ -15,7 +15,9 @@ import locale
 import os
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from config_schema import (
     create_v2_binding, normalize_config_to_v2,
@@ -63,39 +65,88 @@ _ = setup_i18n()
 # -----------------------------------------------------------------------------
 KWINRC_GROUP = "Script-hotcorners-per-monitor"
 CONFIG_KEY = "MonitorConfigs"
+MISSING_CONFIG_SENTINEL_PREFIX = "__HOTCORNERS_PER_MONITOR_MISSING_"
 
-def load_config() -> dict | None:
-    """Read and normalize MonitorConfigs without modifying kwinrc."""
+
+@dataclass(frozen=True)
+class ConfigBaseline:
+    key_exists: bool
+    raw_value: str | None
+
+
+@dataclass(frozen=True)
+class LoadedConfig:
+    document: dict | None
+    baseline: ConfigBaseline
+
+
+class StaleConfigError(RuntimeError):
+    """Raised when MonitorConfigs changed after it was loaded."""
+
+
+def _read_config_baseline() -> ConfigBaseline:
+    missing_sentinel = f"{MISSING_CONFIG_SENTINEL_PREFIX}{uuid4()}__"
+    result = subprocess.run(
+        ["kreadconfig6", "--file", "kwinrc",
+         "--group", KWINRC_GROUP, "--key", CONFIG_KEY,
+         "--default", missing_sentinel],
+        capture_output=True, text=True, check=False,
+    )
+    raw = result.stdout.removesuffix("\n")
+    if raw == missing_sentinel:
+        return ConfigBaseline(False, None)
+    return ConfigBaseline(True, raw)
+
+
+def load_config() -> LoadedConfig:
+    """Read config plus its raw baseline without modifying kwinrc."""
     try:
-        result = subprocess.run(
-            ["kreadconfig6", "--file", "kwinrc",
-             "--group", KWINRC_GROUP, "--key", CONFIG_KEY],
-            capture_output=True, text=True, check=False,
-        )
-        raw = result.stdout.strip()
-        parsed = json.loads(raw) if raw else {}
-        return normalize_config_to_v2(parsed)
-    except (json.JSONDecodeError, ValueError, FileNotFoundError):
-        return None
+        baseline = _read_config_baseline()
+    except FileNotFoundError:
+        return LoadedConfig(None, ConfigBaseline(False, None))
 
-def save_config(config: dict | None) -> bool:
-    """Write normalized v2 MonitorConfigs and trigger KWin reconfigure."""
+    try:
+        raw = baseline.raw_value if baseline.key_exists else ""
+        parsed = json.loads(raw) if raw else {}
+        document = normalize_config_to_v2(parsed)
+    except (json.JSONDecodeError, ValueError):
+        document = None
+    return LoadedConfig(document, baseline)
+
+
+def save_config(
+        config: dict | None,
+        baseline: ConfigBaseline,
+) -> ConfigBaseline | None:
+    """Write v2 config only if its raw baseline is still current."""
     try:
         normalized = normalize_config_to_v2(config)
         payload = json.dumps(normalized, separators=(",", ":"))
+        current = _read_config_baseline()
+    except (ValueError, TypeError, FileNotFoundError):
+        return None
+
+    if current != baseline:
+        raise StaleConfigError("MonitorConfigs changed since load")
+
+    try:
         subprocess.run(
             ["kwriteconfig6", "--file", "kwinrc",
              "--group", KWINRC_GROUP, "--key", CONFIG_KEY, payload],
             check=True,
         )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+    updated_baseline = ConfigBaseline(True, payload)
+    try:
         subprocess.run(
             ["qdbus6", "org.kde.KWin", "/KWin", "reconfigure"],
             check=False,
         )
-        return True
-    except (ValueError, TypeError,
-            subprocess.CalledProcessError, FileNotFoundError):
-        return False
+    except FileNotFoundError:
+        pass
+    return updated_baseline
 
 # -----------------------------------------------------------------------------
 # Action catalog
@@ -564,8 +615,9 @@ class MainWindow(QMainWindow):
 
         self.monitors = detect_monitors()
         loaded_config = load_config()
-        self.config_valid = loaded_config is not None
-        self.config = loaded_config or normalize_config_to_v2({})
+        self.config_baseline = loaded_config.baseline
+        self.config_valid = loaded_config.document is not None
+        self.config = loaded_config.document or normalize_config_to_v2({})
         self.current_selection = None  # (monitor_name, pos_id)
         self._build_ui()
         # Pre-select first corner so editor has something to show
@@ -684,7 +736,12 @@ class MainWindow(QMainWindow):
 
     def _on_apply(self):
         config = self.config if self.config_valid else None
-        if save_config(config):
+        try:
+            updated_baseline = save_config(config, self.config_baseline)
+        except StaleConfigError:
+            updated_baseline = None
+        if updated_baseline is not None:
+            self.config_baseline = updated_baseline
             QMessageBox.information(
                 self, _("Saved"),
                 _("Configuration saved. KWin has been reloaded — "
@@ -699,8 +756,9 @@ class MainWindow(QMainWindow):
 
     def _on_reset(self):
         loaded_config = load_config()
-        self.config_valid = loaded_config is not None
-        self.config = loaded_config or normalize_config_to_v2({})
+        self.config_baseline = loaded_config.baseline
+        self.config_valid = loaded_config.document is not None
+        self.config = loaded_config.document or normalize_config_to_v2({})
         self.canvas.set_config(self.config)
         if self.current_selection:
             mon, pos = self.current_selection
