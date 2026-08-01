@@ -13,6 +13,9 @@ GUI_DIR = ROOT / "config-gui"
 MODULE_PATH = GUI_DIR / "hotcorners_config.py"
 LEGACY_FIXTURE_PATH = ROOT / "tests" / "fixtures" / "v0.1-config.json"
 V2_FIXTURE_PATH = ROOT / "tests" / "fixtures" / "v0.2-migrated-config.json"
+EXTENSION_FIXTURE_PATH = (
+    ROOT / "tests" / "fixtures" / "v0.2-config-with-extensions.json"
+)
 
 
 def load_config_module():
@@ -86,8 +89,10 @@ class GuiPersistenceTests(unittest.TestCase):
         cls.module = load_config_module()
         cls.legacy_text = LEGACY_FIXTURE_PATH.read_text(encoding="utf-8")
         cls.v2_text = V2_FIXTURE_PATH.read_text(encoding="utf-8")
+        cls.extension_text = EXTENSION_FIXTURE_PATH.read_text(encoding="utf-8")
         cls.legacy = json.loads(cls.legacy_text)
         cls.v2 = json.loads(cls.v2_text)
+        cls.extended = json.loads(cls.extension_text)
 
     def test_load_v01_normalizes_in_memory_without_writing(self):
         fake = FakeKWinPersistence(self.legacy_text)
@@ -114,6 +119,93 @@ class GuiPersistenceTests(unittest.TestCase):
         )
         self.assertEqual(fake.raw, self.v2_text)
         self.assertEqual(fake.write_count, 0)
+        self.assertEqual(fake.reload_count, 0)
+
+    def test_gui_load_save_preserves_extensions_at_all_levels(self):
+        fake = FakeKWinPersistence(self.extension_text)
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            loaded = self.module.load_config()
+            updated_baseline = self.module.save_config(
+                loaded.document, loaded.baseline
+            )
+
+        written = json.loads(fake.written_payloads[0])
+        source_monitor = self.extended["monitors"]["DP-1"]
+        written_monitor = written["monitors"]["DP-1"]
+        self.assertEqual(written["xTestRootTypes"], self.extended["xTestRootTypes"])
+        self.assertEqual(written["xTestContexts"], self.extended["xTestContexts"])
+        self.assertEqual(
+            written_monitor["xTestMonitorMetadata"],
+            source_monitor["xTestMonitorMetadata"],
+        )
+        self.assertEqual(
+            written_monitor["TopLeft"]["xTestBindingHint"],
+            source_monitor["TopLeft"]["xTestBindingHint"],
+        )
+        self.assertIsNone(
+            written_monitor["TopLeft"]["action"]["xTestActionMetadata"]
+        )
+        self.assertIsNotNone(updated_baseline)
+        self.assertEqual(fake.write_count, 1)
+        self.assertEqual(fake.reload_count, 1)
+
+    def test_known_gui_edit_preserves_unknown_sibling_fields(self):
+        fake = FakeKWinPersistence(self.extension_text)
+        fixture_before = copy.deepcopy(self.extended)
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            loaded = self.module.load_config()
+            loaded.document["monitors"]["DP-1"]["TopLeft"]["action"][
+                "name"
+            ] = "Grid View"
+            self.module.save_config(loaded.document, loaded.baseline)
+
+        written = json.loads(fake.written_payloads[0])
+        written_binding = written["monitors"]["DP-1"]["TopLeft"]
+        self.assertEqual(written_binding["action"]["name"], "Grid View")
+        self.assertEqual(
+            written["monitors"]["DP-1"]["xTestMonitorMetadata"],
+            fixture_before["monitors"]["DP-1"]["xTestMonitorMetadata"],
+        )
+        self.assertEqual(
+            written_binding["xTestBindingHint"],
+            fixture_before["monitors"]["DP-1"]["TopLeft"]["xTestBindingHint"],
+        )
+        self.assertIn("xTestActionMetadata", written_binding["action"])
+        self.assertEqual(self.extended, fixture_before)
+
+    def test_second_own_save_preserves_extensions_without_drift(self):
+        fake = FakeKWinPersistence(self.extension_text)
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            loaded = self.module.load_config()
+            first_baseline = self.module.save_config(
+                loaded.document, loaded.baseline
+            )
+            second_baseline = self.module.save_config(
+                loaded.document, first_baseline
+            )
+
+        self.assertEqual(fake.written_payloads[0], fake.written_payloads[1])
+        self.assertEqual(second_baseline, first_baseline)
+        self.assertEqual(fake.reload_count, 2)
+
+    def test_stale_conflict_does_not_merge_preserved_extensions(self):
+        fake = FakeKWinPersistence(self.extension_text)
+        external_raw = json.dumps({"schemaVersion": 2, "monitors": {}})
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            loaded = self.module.load_config()
+            loaded.document["monitors"]["DP-1"]["TopLeft"]["action"][
+                "name"
+            ] = "Grid View"
+            fake.external_set(external_raw)
+            with self.assertRaises(self.module.StaleConfigError):
+                self.module.save_config(loaded.document, loaded.baseline)
+
+        self.assertEqual(fake.raw, external_raw)
+        self.assertEqual(fake.write_attempt_count, 0)
         self.assertEqual(fake.reload_count, 0)
 
     def test_unchanged_baseline_writes_v02_and_reloads_once(self):

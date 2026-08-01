@@ -9,6 +9,7 @@ const BACKEND_PATH = path.join(ROOT, "kwin-script/contents/code/main.js");
 const backendSource = fs.readFileSync(BACKEND_PATH, "utf8");
 const legacyConfig = readFixture("v0.1-config.json");
 const expectedConfig = readFixture("v0.2-migrated-config.json");
+const extensionConfig = readFixture("v0.2-config-with-extensions.json");
 const actions = readFixture("v0.1-actions.json");
 
 function readFixture(name) {
@@ -77,4 +78,16 @@ test("normalizing the v0.2 fixture is idempotent", () => {
         plain(schema.normalizeConfigToV2(expectedConfig)),
         expectedConfig,
     );
+});
+
+test("preserves unknown v0.2 fields without mutating extensions", () => {
+    const schema = loadSchemaFunctions();
+    const original = structuredClone(extensionConfig);
+
+    const normalized = plain(schema.normalizeConfigToV2(extensionConfig));
+
+    assert.deepEqual(normalized, original);
+    normalized.xTestRootTypes.object.nested = "changed";
+    normalized.monitors["DP-1"].xTestMonitorMetadata.flags.push(true);
+    assert.deepEqual(extensionConfig, original);
 });

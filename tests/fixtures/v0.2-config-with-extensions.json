@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 2,
+  "xTestRootTypes": {
+    "string": "future-root",
+    "number": 42.5,
+    "boolean": true,
+    "null": null,
+    "object": {
+      "nested": "value"
+    },
+    "array": [
+      1,
+      "two",
+      false,
+      null,
+      {
+        "deep": ["x"]
+      }
+    ]
+  },
+  "xTestContexts": {
+    "default": {
+      "xTestContextMetadata": {
+        "source": "future-producer"
+      },
+      "xTestDefaultMetadata": [
+        "keep",
+        {
+          "enabled": true
+        }
+      ]
+    }
+  },
+  "monitors": {
+    "DP-1": {
+      "xTestMonitorMetadata": {
+        "label": "future-monitor",
+        "flags": [true, false]
+      },
+      "TopLeft": {
+        "action": {
+          "type": "shortcut",
+          "component": "kwin",
+          "name": "Overview",
+          "xTestActionMetadata": null
+        },
+        "cooldownMs": 0,
+        "xTestBindingHint": [
+          "keep",
+          {
+            "weight": 2
+          }
+        ]
+      }
+    }
+  }
+}

@@ -54,13 +54,18 @@ function cloneJson(value) {
 function normalizeAction(action) {
     if (!isObject(action)) return null;
 
+    const normalized = cloneJson(action);
     if (action.type === "none") {
-        return cloneJson(action);
+        normalized.type = "none";
+        return normalized;
     }
     if (action.type === "shortcut") {
         if (typeof action.component === "string" && action.component &&
             typeof action.name === "string" && action.name) {
-            return cloneJson(action);
+            normalized.type = "shortcut";
+            normalized.component = action.component;
+            normalized.name = action.name;
+            return normalized;
         }
         return null;
     }
@@ -68,7 +73,10 @@ function normalizeAction(action) {
         if (typeof action.program === "string" && action.program &&
             Array.isArray(action.arguments) &&
             action.arguments.every(arg => typeof arg === "string")) {
-            return cloneJson(action);
+            normalized.type = "command";
+            normalized.program = action.program;
+            normalized.arguments = cloneJson(action.arguments);
+            return normalized;
         }
     }
     return null;
@@ -94,9 +102,13 @@ function normalizeMonitors(monitors, legacy) {
         const monitor = monitors[outputName];
         if (!outputName || !isObject(monitor)) continue;
 
-        const normalizedMonitor = {};
+        const normalizedMonitor = legacy ? {} : cloneJson(monitor);
         for (const position of Object.keys(monitor)) {
             if (!Object.prototype.hasOwnProperty.call(POSITIONS, position)) continue;
+
+            if (!legacy) {
+                delete normalizedMonitor[position];
+            }
 
             if (legacy) {
                 const action = normalizeAction(monitor[position]);
@@ -136,6 +148,7 @@ function normalizeConfigToV2(config) {
     }
 
     const normalized = cloneJson(config);
+    normalized.schemaVersion = SCHEMA_VERSION;
     normalized.monitors = normalizeMonitors(config.monitors, false);
     return normalized;
 }

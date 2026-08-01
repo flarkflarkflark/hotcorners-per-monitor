@@ -40,14 +40,19 @@ def _normalize_action(action):
         return None
 
     action_type = action.get("type")
+    normalized = deepcopy(action)
     if action_type == "none":
-        return deepcopy(action)
+        normalized["type"] = "none"
+        return normalized
     if action_type == "shortcut":
         component = action.get("component")
         name = action.get("name")
         if (isinstance(component, str) and component
                 and isinstance(name, str) and name):
-            return deepcopy(action)
+            normalized["type"] = "shortcut"
+            normalized["component"] = component
+            normalized["name"] = name
+            return normalized
         return None
     if action_type == "command":
         program = action.get("program")
@@ -55,7 +60,10 @@ def _normalize_action(action):
         if (isinstance(program, str) and program
                 and isinstance(arguments, list)
                 and all(isinstance(arg, str) for arg in arguments)):
-            return deepcopy(action)
+            normalized["type"] = "command"
+            normalized["program"] = program
+            normalized["arguments"] = deepcopy(arguments)
+            return normalized
     return None
 
 
@@ -89,10 +97,13 @@ def _normalize_monitors(monitors, *, legacy):
         if not isinstance(output_name, str) or not output_name or not _is_object(monitor):
             continue
 
-        normalized_monitor = {}
+        normalized_monitor = {} if legacy else deepcopy(monitor)
         for position, value in monitor.items():
             if position not in POSITIONS:
                 continue
+
+            if not legacy:
+                normalized_monitor.pop(position, None)
 
             if legacy:
                 action = _normalize_action(value)
@@ -136,6 +147,7 @@ def normalize_config_to_v2(config):
         )
 
     normalized = deepcopy(config)
+    normalized["schemaVersion"] = SCHEMA_VERSION
     normalized["monitors"] = _normalize_monitors(
         config.get("monitors"), legacy=False
     )
