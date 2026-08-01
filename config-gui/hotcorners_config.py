@@ -17,6 +17,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+from config_schema import (
+    create_v2_binding, normalize_config_to_v2,
+)
 from PyQt6.QtCore import Qt, QSize, QRect, pyqtSignal
 from PyQt6.QtGui import (
     QGuiApplication, QPainter, QPen, QBrush, QColor, QPalette, QFont,
@@ -61,8 +64,8 @@ _ = setup_i18n()
 KWINRC_GROUP = "Script-hotcorners-per-monitor"
 CONFIG_KEY = "MonitorConfigs"
 
-def load_config() -> dict:
-    """Read the current MonitorConfigs JSON blob from kwinrc."""
+def load_config() -> dict | None:
+    """Read and normalize MonitorConfigs without modifying kwinrc."""
     try:
         result = subprocess.run(
             ["kreadconfig6", "--file", "kwinrc",
@@ -70,16 +73,16 @@ def load_config() -> dict:
             capture_output=True, text=True, check=False,
         )
         raw = result.stdout.strip()
-        if not raw:
-            return {}
-        return json.loads(raw)
-    except (json.JSONDecodeError, FileNotFoundError):
-        return {}
+        parsed = json.loads(raw) if raw else {}
+        return normalize_config_to_v2(parsed)
+    except (json.JSONDecodeError, ValueError, FileNotFoundError):
+        return None
 
-def save_config(config: dict) -> bool:
-    """Write MonitorConfigs JSON blob to kwinrc and trigger KWin reconfigure."""
+def save_config(config: dict | None) -> bool:
+    """Write normalized v2 MonitorConfigs and trigger KWin reconfigure."""
     try:
-        payload = json.dumps(config, separators=(",", ":"))
+        normalized = normalize_config_to_v2(config)
+        payload = json.dumps(normalized, separators=(",", ":"))
         subprocess.run(
             ["kwriteconfig6", "--file", "kwinrc",
              "--group", KWINRC_GROUP, "--key", CONFIG_KEY, payload],
@@ -90,7 +93,8 @@ def save_config(config: dict) -> bool:
             check=False,
         )
         return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (ValueError, TypeError,
+            subprocess.CalledProcessError, FileNotFoundError):
         return False
 
 # -----------------------------------------------------------------------------
@@ -257,9 +261,10 @@ class MonitorCanvas(QWidget):
         }
 
     def _is_configured(self, monitor_name: str, pos_id: str) -> bool:
-        mon = self.config.get(monitor_name, {})
-        action = mon.get(pos_id)
-        return bool(action) and action.get("type", "none") != "none"
+        mon = self.config.get("monitors", {}).get(monitor_name, {})
+        binding = mon.get(pos_id, {})
+        action = binding.get("action", {})
+        return action.get("type", "none") != "none"
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -558,7 +563,9 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(QSize(900, 700))
 
         self.monitors = detect_monitors()
-        self.config = load_config()
+        loaded_config = load_config()
+        self.config_valid = loaded_config is not None
+        self.config = loaded_config or normalize_config_to_v2({})
         self.current_selection = None  # (monitor_name, pos_id)
         self._build_ui()
         # Pre-select first corner so editor has something to show
@@ -650,26 +657,34 @@ class MainWindow(QMainWindow):
                 position=pos_label, monitor=display_name(mon)
             )
         )
-        action = self.config.get(monitor_name, {}).get(
-            position_id, dict(NONE_ACTION)
+        binding = self.config["monitors"].get(monitor_name, {}).get(
+            position_id, {}
         )
+        action = binding.get("action", dict(NONE_ACTION))
         self.action_editor.set_action(action)
 
     def _on_action_changed(self, action: dict):
-        if not self.current_selection:
+        if not self.current_selection or not self.config_valid:
             return
         monitor_name, position_id = self.current_selection
+        monitors = self.config["monitors"]
         if action.get("type", "none") == "none":
-            if monitor_name in self.config:
-                self.config[monitor_name].pop(position_id, None)
-                if not self.config[monitor_name]:
-                    self.config.pop(monitor_name, None)
+            if monitor_name in monitors:
+                monitors[monitor_name].pop(position_id, None)
+                if not monitors[monitor_name]:
+                    monitors.pop(monitor_name, None)
         else:
-            self.config.setdefault(monitor_name, {})[position_id] = action
+            monitor = monitors.setdefault(monitor_name, {})
+            binding = monitor.get(position_id)
+            if binding:
+                binding["action"] = dict(action)
+            else:
+                monitor[position_id] = create_v2_binding(action)
         self.canvas.set_config(self.config)
 
     def _on_apply(self):
-        if save_config(self.config):
+        config = self.config if self.config_valid else None
+        if save_config(config):
             QMessageBox.information(
                 self, _("Saved"),
                 _("Configuration saved. KWin has been reloaded — "
@@ -683,11 +698,14 @@ class MainWindow(QMainWindow):
             )
 
     def _on_reset(self):
-        self.config = load_config()
+        loaded_config = load_config()
+        self.config_valid = loaded_config is not None
+        self.config = loaded_config or normalize_config_to_v2({})
         self.canvas.set_config(self.config)
         if self.current_selection:
             mon, pos = self.current_selection
-            action = self.config.get(mon, {}).get(pos, dict(NONE_ACTION))
+            binding = self.config["monitors"].get(mon, {}).get(pos, {})
+            action = binding.get("action", dict(NONE_ACTION))
             self.action_editor.set_action(action)
 
 

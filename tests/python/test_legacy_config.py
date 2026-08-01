@@ -8,16 +8,22 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
+GUI_DIR = ROOT / "config-gui"
 FIXTURE_PATH = ROOT / "tests" / "fixtures" / "v0.1-config.json"
+MIGRATED_FIXTURE_PATH = ROOT / "tests" / "fixtures" / "v0.2-migrated-config.json"
 ACTION_FIXTURE_PATH = ROOT / "tests" / "fixtures" / "v0.1-actions.json"
-MODULE_PATH = ROOT / "config-gui" / "hotcorners_config.py"
+MODULE_PATH = GUI_DIR / "hotcorners_config.py"
 
 
 def load_config_module():
     spec = importlib.util.spec_from_file_location("hotcorners_config", MODULE_PATH)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    sys.path.insert(0, str(GUI_DIR))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.pop(0)
     return module
 
 
@@ -26,6 +32,9 @@ class LegacyConfigPersistenceTests(unittest.TestCase):
     def setUpClass(cls):
         cls.module = load_config_module()
         cls.legacy_config = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+        cls.migrated_config = json.loads(
+            MIGRATED_FIXTURE_PATH.read_text(encoding="utf-8")
+        )
         cls.legacy_actions = json.loads(
             ACTION_FIXTURE_PATH.read_text(encoding="utf-8")
         )
@@ -41,7 +50,7 @@ class LegacyConfigPersistenceTests(unittest.TestCase):
         for action in configured_actions:
             self.assertIn(action, documented_actions)
 
-    def test_load_config_preserves_unversioned_v01_shape(self):
+    def test_load_config_normalizes_unversioned_v01_shape(self):
         result = CompletedProcess(
             args=["kreadconfig6"],
             returncode=0,
@@ -52,7 +61,7 @@ class LegacyConfigPersistenceTests(unittest.TestCase):
         with patch.object(self.module.subprocess, "run", return_value=result) as run:
             loaded = self.module.load_config()
 
-        self.assertEqual(loaded, self.legacy_config)
+        self.assertEqual(loaded, self.migrated_config)
         run.assert_called_once_with(
             [
                 "kreadconfig6",
@@ -68,7 +77,7 @@ class LegacyConfigPersistenceTests(unittest.TestCase):
             check=False,
         )
 
-    def test_save_config_writes_legacy_shape_and_reconfigures_kwin(self):
+    def test_save_config_normalizes_legacy_shape_and_reconfigures_kwin(self):
         with patch.object(self.module.subprocess, "run") as run:
             saved = self.module.save_config(self.legacy_config)
 
@@ -84,7 +93,7 @@ class LegacyConfigPersistenceTests(unittest.TestCase):
                 "Script-hotcorners-per-monitor",
                 "--key",
                 "MonitorConfigs",
-                json.dumps(self.legacy_config, separators=(",", ":")),
+                json.dumps(self.migrated_config, separators=(",", ":")),
             ],
         )
         self.assertTrue(run.call_args_list[0].kwargs["check"])
