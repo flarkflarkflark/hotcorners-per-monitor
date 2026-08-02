@@ -1,10 +1,11 @@
 # QTimer Capability Spike
 
-## Conclusion: PARTIAL / BLOCKED
+## Conclusion: PASS
 
-The isolated probe passes on Plasma/KWin 6.7.3 Wayland (supplementary) and on
-Plasma/KWin 6.4.5 Wayland (required gate). Plasma/KWin 6.4 X11 is still
-**NOT RUN**, so timer-backed production cooldown is not yet approved.
+The isolated probe passes on Plasma/KWin 6.7.3 Wayland (supplementary),
+Plasma/KWin 6.4.5 Wayland (required gate), and Plasma/KWin 6.4.5 X11
+(required gate). Timer-backed cooldown is approved for the planned
+implementation contract.
 
 ## Question
 
@@ -143,25 +144,18 @@ Qt and is reported rather than treated as a real-time guarantee.
 | Environment | Status | Missing evidence |
 |---|---|---|
 | Plasma/KWin 6.4 Wayland | **PASS** | Evidence retained under `specs/spikes/results/plasma-6.4-wayland/` (`environment.txt`, `verification.json`); run output confirms `unloaded=true` and `isScriptLoaded=false`. |
-| Plasma/KWin 6.4 X11 | **NOT RUN** | A real 6.4 X11 session must run the same probe and retain the same evidence. |
+| Plasma/KWin 6.4 X11 | **PASS** | Evidence retained under `specs/spikes/results/plasma-6.4-x11/` (`environment.txt`, `verification.json`); run output confirms `unloaded=true` and `isScriptLoaded=false`. |
 
-No VM or KWin build environment was created because that requires separate
-permission.
+Gate evidence was gathered on an offline Fedora 43 VM with Plasma/KWin 6.4.5.
 
 ## Decision
 
-**PARTIAL / BLOCKED.** The timer-backed active-key design is technically
-plausible and passes the available newer Wayland smoke-test, but it is not yet
-a supported architecture for this project.
+**PASS.** Both required Plasma/KWin 6.4 gates pass (Wayland and X11), and the
+probe verifies constructor, timeout connection, single-shot behavior,
+`PreciseTimer` readback, cancellation, restart semantics, independent timers,
+and unload cleanup with no stale callbacks.
 
-Production integration remains blocked until both Plasma/KWin 6.4 gates pass.
-If either environment cannot construct/configure `QTimer`, cannot read back
-`PreciseTimer`, fires early, fails cancellation/cleanup, or differs materially
-between Wayland and X11, this approach is **FAIL** and the next architecture to
-investigate is a small supported native/D-Bus boundary backed by
-`QElapsedTimer`. That native boundary is not part of this spike.
-
-If both gates pass, the future cooldown contract is:
+The approved cooldown contract is:
 
 - one active one-shot timer per `outputName + position`;
 - denied events do not call `start()` and therefore do not move the deadline;

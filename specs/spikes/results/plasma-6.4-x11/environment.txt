@@ -1,0 +1,6 @@
+XDG_SESSION_TYPE=x11
+XDG_CURRENT_DESKTOP=KDE
+plasmashell 6.4.5
+kwin 6.4.5
+kwin 6.4.5
+6.9.2
