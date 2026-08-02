@@ -11,7 +11,7 @@ import sys
 from dataclasses import dataclass
 from typing import Callable
 
-from PyQt6.QtCore import QObject, QCoreApplication, QTimer, pyqtSlot
+from PyQt6.QtCore import QObject, QCoreApplication, QTimer, pyqtClassInfo, pyqtSlot
 from PyQt6.QtDBus import QDBusConnection
 
 BUS_NAME = "org.flark.HotCorners.CommandRunner"
@@ -145,6 +145,7 @@ class CommandRunnerCore:
         )
 
 
+@pyqtClassInfo("D-Bus Interface", INTERFACE_NAME)
 class CommandRunnerObject(QObject):
     def __init__(self, core: CommandRunnerCore) -> None:
         super().__init__()
@@ -193,7 +194,6 @@ def main() -> int:
 
     if not bus.registerObject(
         OBJECT_PATH,
-        INTERFACE_NAME,
         service,
         QDBusConnection.RegisterOption.ExportAllSlots,
     ):

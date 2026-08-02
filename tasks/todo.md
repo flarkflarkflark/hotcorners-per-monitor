@@ -20,7 +20,7 @@
 - [x] Apply timer-backed cooldown gating in KWin runtime.
 - [x] Add specified session-D-Bus command runner without implicit shell.
 - [x] Add no-shell command helper client contract in KWin runtime.
-- [ ] Install/remove the helper and D-Bus metadata through an ownership manifest.
+- [x] Install/remove the helper and D-Bus metadata through an ownership manifest.
 - [ ] Add command/cooldown PyQt controls and fix installed gettext lookup.
 - [ ] Add French translation.
 - [ ] Add Spanish translation.

@@ -18,6 +18,9 @@ KWIN_DIR="${HOME}/.local/share/kwin/scripts/${SCRIPT_ID}"
 BIN_FILE="${HOME}/.local/bin/hotcorners-config"
 DESKTOP_FILE="${HOME}/.local/share/applications/hotcorners-config.desktop"
 LIB_DIR="${HOME}/.local/share/${SCRIPT_ID}"
+HELPER_LIB_DIR="${HOME}/.local/lib/${SCRIPT_ID}/command-runner"
+HELPER_PY="${HELPER_LIB_DIR}/command_runner.py"
+DBUS_SERVICE_FILE="${HOME}/.local/share/dbus-1/services/org.flark.HotCorners.CommandRunner.service"
 BACKUP_FILE="${HOME}/.config/${SCRIPT_ID}-backup-electric-borders.conf"
 
 NONINTERACTIVE=0
@@ -80,7 +83,7 @@ if command -v kpackagetool6 >/dev/null 2>&1; then
     kpackagetool6 --type=KWin/Script --remove "${SCRIPT_ID}" >/dev/null 2>&1 || true
 fi
 
-for path in "${BIN_FILE}" "${DESKTOP_FILE}"; do
+for path in "${BIN_FILE}" "${DESKTOP_FILE}" "${HELPER_PY}" "${DBUS_SERVICE_FILE}"; do
     if [ -e "${path}" ]; then
         rm -f "${path}"
         ok "Removed ${path}"
@@ -92,6 +95,13 @@ if [ -d "${LIB_DIR}" ]; then
     ok "Removed ${LIB_DIR}"
 fi
 
+if [ -d "${HELPER_LIB_DIR}" ]; then
+    rmdir "${HELPER_LIB_DIR}" 2>/dev/null || true
+fi
+if [ -d "${HOME}/.local/lib/${SCRIPT_ID}" ]; then
+    rmdir "${HOME}/.local/lib/${SCRIPT_ID}" 2>/dev/null || true
+fi
+
 # Translations
 for lang in nl de; do
     mo="${HOME}/.local/share/locale/${lang}/LC_MESSAGES/hotcorners-config.mo"
@@ -101,6 +111,8 @@ done
 # Reload KWin so the script is actually unloaded
 if command -v qdbus6 >/dev/null 2>&1; then
     qdbus6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+elif command -v qdbus-qt6 >/dev/null 2>&1; then
+    qdbus-qt6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
 elif command -v qdbus >/dev/null 2>&1; then
     qdbus org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
 fi
@@ -115,4 +127,5 @@ if [ -f "${BACKUP_FILE}" ]; then
 fi
 
 echo
+warn "If command helper was already active, it may live until session end."
 ok "Uninstall complete."

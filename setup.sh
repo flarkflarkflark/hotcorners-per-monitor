@@ -24,6 +24,11 @@ BIN_DIR="${HOME}/.local/bin"
 DESKTOP_DIR="${HOME}/.local/share/applications"
 LOCALE_DIR="${HOME}/.local/share/locale"
 LIB_DIR="${HOME}/.local/share/${SCRIPT_ID}"
+HELPER_LIB_DIR="${HOME}/.local/lib/${SCRIPT_ID}/command-runner"
+HELPER_PY="${HELPER_LIB_DIR}/command_runner.py"
+DBUS_SERVICE_DIR="${HOME}/.local/share/dbus-1/services"
+HELPER_SERVICE="${DBUS_SERVICE_DIR}/org.flark.HotCorners.CommandRunner.service"
+PYTHON_BIN="$(command -v python3 || true)"
 
 # Flags
 NONINTERACTIVE=0
@@ -104,15 +109,18 @@ for cmd in kwriteconfig6 kreadconfig6 kpackagetool6 python3; do
     fi
 done
 
-# qdbus6 OR qdbus (some distros only ship one)
+# qdbus6 OR qdbus-qt6 OR qdbus (some distros ship only one)
 if command -v qdbus6 >/dev/null 2>&1; then
     QDBUS=qdbus6
     ok "found: qdbus6"
+elif command -v qdbus-qt6 >/dev/null 2>&1; then
+    QDBUS=qdbus-qt6
+    ok "found: qdbus-qt6 (using as qdbus6 fallback)"
 elif command -v qdbus >/dev/null 2>&1; then
     QDBUS=qdbus
     ok "found: qdbus (using as qdbus6 fallback)"
 else
-    fail "missing: qdbus6 (or qdbus)"
+    fail "missing: qdbus6 (or qdbus-qt6/qdbus)"
     MISSING+=("qdbus6")
 fi
 
@@ -122,6 +130,13 @@ if python3 -c "import PyQt6.QtWidgets" 2>/dev/null; then
 else
     fail "missing: PyQt6 (Python module)"
     MISSING+=("python3-pyqt6")
+fi
+
+if python3 -c "import PyQt6.QtDBus" 2>/dev/null; then
+    ok "found: python3-pyqt6-qtdbus"
+else
+    fail "missing: PyQt6.QtDBus (Python module)"
+    MISSING+=("python3-pyqt6-qtdbus")
 fi
 
 # msgfmt — soft dependency, we ship pre-built .mo files anyway
@@ -216,6 +231,52 @@ ok "Desktop entry installed"
 
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "${DESKTOP_DIR}" 2>/dev/null || true
+fi
+
+# ----- install command helper -----
+echo
+say "Installing command runner helper"
+
+mkdir -p "${HELPER_LIB_DIR}" "${DBUS_SERVICE_DIR}"
+if [ ! -w "${HELPER_LIB_DIR}" ] || [ ! -w "${DBUS_SERVICE_DIR}" ]; then
+    fail "Cannot write command runner install directories under ~/.local"
+    exit 1
+fi
+
+helper_tmp="$(mktemp "${HELPER_PY}.tmp.XXXXXX")"
+cp "${SCRIPT_DIR}/command-runner/command_runner.py" "${helper_tmp}"
+chmod 0755 "${helper_tmp}"
+mv "${helper_tmp}" "${HELPER_PY}"
+ok "Command runner installed to ${HELPER_PY}"
+
+service_tmp="$(mktemp "${HELPER_SERVICE}.tmp.XXXXXX")"
+python_exec_escaped="$(printf '%s' "${PYTHON_BIN}" | sed -e 's/\\/\\\\/g' -e 's/ /\\ /g')"
+helper_exec_escaped="$(printf '%s' "${HELPER_PY}" | sed -e 's/\\/\\\\/g' -e 's/ /\\ /g')"
+cat > "${service_tmp}" << EOF
+[D-BUS Service]
+Name=org.flark.HotCorners.CommandRunner
+Exec=${python_exec_escaped} ${helper_exec_escaped}
+EOF
+chmod 0644 "${service_tmp}"
+mv "${service_tmp}" "${HELPER_SERVICE}"
+ok "D-Bus activation file installed to ${HELPER_SERVICE}"
+
+if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+    step "Probing command helper activation on current session bus"
+    activation_output="$("${QDBUS}" org.flark.HotCorners.CommandRunner \
+        /CommandRunner org.flark.HotCorners.CommandRunner1.Run \
+        /usr/bin/true '[]' 2>/dev/null || true)"
+    if printf '%s\n' "${activation_output}" | head -n1 | grep -qx 'true'; then
+        ok "Command helper activation probe passed"
+    else
+        warn "Command helper activation probe failed in current session"
+        if [ "${HCPM_REQUIRE_HELPER_ACTIVATION:-0}" = "1" ]; then
+            fail "Activation probe is required and failed"
+            exit 1
+        fi
+    fi
+else
+    warn "No session bus detected; skipped command helper activation probe"
 fi
 
 # ----- install translations -----
