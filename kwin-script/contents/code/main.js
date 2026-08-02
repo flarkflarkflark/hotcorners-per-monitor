@@ -42,6 +42,14 @@ const SCHEMA_VERSION = 2;
 const DEFAULT_COOLDOWN_MS = 350;
 const LEGACY_COOLDOWN_MS = 0;
 const MAX_COOLDOWN_MS = 10000;
+const COMMAND_RUNNER_BUS = "org.flark.HotCorners.CommandRunner";
+const COMMAND_RUNNER_OBJECT_PATH = "/CommandRunner";
+const COMMAND_RUNNER_INTERFACE = "org.flark.HotCorners.CommandRunner1";
+const COMMAND_RUNNER_METHOD = "Run";
+const MAX_COMMAND_ARGUMENTS = 128;
+const MAX_COMMAND_ARGUMENT_BYTES = 16 * 1024;
+const MAX_COMMAND_TOTAL_ARGUMENT_BYTES = 128 * 1024;
+const MAX_COMMAND_PROGRAM_BYTES = 4096;
 
 function isObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -85,6 +93,105 @@ function normalizeAction(action) {
 function validCooldown(value) {
     return Number.isInteger(value) &&
            value >= 0 && value <= MAX_COOLDOWN_MS;
+}
+
+function utf8ByteLength(value) {
+    return encodeURIComponent(value).replace(/%[A-F\d]{2}/g, "U").length;
+}
+
+function validateCommandAction(action) {
+    if (!isObject(action) || action.type !== "command") {
+        return {ok: false, errorName: "invalid-action-type"};
+    }
+
+    if (typeof action.program !== "string" || !action.program) {
+        return {ok: false, errorName: "invalid-program"};
+    }
+    if (action.program.indexOf("\u0000") !== -1 ||
+        utf8ByteLength(action.program) > MAX_COMMAND_PROGRAM_BYTES) {
+        return {ok: false, errorName: "invalid-program"};
+    }
+
+    if (!Array.isArray(action.arguments) ||
+        action.arguments.length > MAX_COMMAND_ARGUMENTS) {
+        return {ok: false, errorName: "invalid-arguments"};
+    }
+
+    let totalBytes = 0;
+    for (let i = 0; i < action.arguments.length; i++) {
+        const argument = action.arguments[i];
+        if (typeof argument !== "string" || argument.indexOf("\u0000") !== -1) {
+            return {ok: false, errorName: "invalid-arguments"};
+        }
+        const size = utf8ByteLength(argument);
+        if (size > MAX_COMMAND_ARGUMENT_BYTES) {
+            return {ok: false, errorName: "invalid-arguments"};
+        }
+        totalBytes += size;
+        if (totalBytes > MAX_COMMAND_TOTAL_ARGUMENT_BYTES) {
+            return {ok: false, errorName: "invalid-arguments"};
+        }
+    }
+
+    return {ok: true};
+}
+
+function buildCommandRequest(action) {
+    const validation = validateCommandAction(action);
+    if (!validation.ok) {
+        throw new Error(validation.errorName);
+    }
+
+    return {
+        bus: COMMAND_RUNNER_BUS,
+        objectPath: COMMAND_RUNNER_OBJECT_PATH,
+        interfaceName: COMMAND_RUNNER_INTERFACE,
+        methodName: COMMAND_RUNNER_METHOD,
+        program: action.program,
+        argumentsJson: JSON.stringify(action.arguments),
+    };
+}
+
+function normalizeCommandResult(rawResult) {
+    if (Array.isArray(rawResult) && rawResult.length >= 2) {
+        if (typeof rawResult[0] === "boolean" && typeof rawResult[1] === "string") {
+            return {accepted: rawResult[0], errorName: rawResult[1]};
+        }
+        return {accepted: false, errorName: "invalid-helper-response"};
+    }
+
+    if (isObject(rawResult) && typeof rawResult.accepted === "boolean" &&
+        typeof rawResult.errorName === "string") {
+        return {accepted: rawResult.accepted, errorName: rawResult.errorName};
+    }
+
+    return {accepted: false, errorName: "invalid-helper-response"};
+}
+
+function invokeCommandHelper(action, helperClient) {
+    const validation = validateCommandAction(action);
+    if (!validation.ok) {
+        return {accepted: false, errorName: validation.errorName};
+    }
+
+    if (!helperClient || typeof helperClient.call !== "function") {
+        return {accepted: false, errorName: "helper-unavailable"};
+    }
+
+    const request = buildCommandRequest(action);
+    try {
+        const rawResult = helperClient.call(
+            request.bus,
+            request.objectPath,
+            request.interfaceName,
+            request.methodName,
+            request.program,
+            request.argumentsJson
+        );
+        return normalizeCommandResult(rawResult);
+    } catch (_) {
+        return {accepted: false, errorName: "transport-error"};
+    }
 }
 
 function createV2Binding(action, cooldownMs = DEFAULT_COOLDOWN_MS) {
