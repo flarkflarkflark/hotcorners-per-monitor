@@ -194,6 +194,25 @@ function invokeCommandHelper(action, helperClient) {
     }
 }
 
+function createCommandHelperClient() {
+    if (typeof callDBus !== "function") {
+        return null;
+    }
+
+    return {
+        call(bus, objectPath, interfaceName, methodName, program, argumentsJson) {
+            return callDBus(
+                bus,
+                objectPath,
+                interfaceName,
+                methodName,
+                program,
+                argumentsJson
+            );
+        },
+    };
+}
+
 function createV2Binding(action, cooldownMs = DEFAULT_COOLDOWN_MS) {
     const normalizedAction = normalizeAction(action);
     if (!normalizedAction) throw new Error("invalid action");
@@ -450,24 +469,44 @@ function getScreenAtCursor() {
 }
 
 function isDispatchableAction(action) {
-    return !!action &&
-           action.type === "shortcut" &&
-           typeof action.component === "string" &&
-           action.component &&
-           typeof action.name === "string" &&
-           action.name;
+    if (!action || action.type === "none") {
+        return false;
+    }
+
+    if (action.type === "shortcut") {
+        return typeof action.component === "string" &&
+               action.component &&
+               typeof action.name === "string" &&
+               action.name;
+    }
+
+    if (action.type === "command") {
+        return validateCommandAction(action).ok;
+    }
+
+    return false;
 }
 
 function executeAction(action) {
-    const component = action.component;
-    const name = action.name;
-    callDBus(
-        "org.kde.kglobalaccel",
-        "/component/" + component,
-        "org.kde.kglobalaccel.Component",
-        "invokeShortcut",
-        name
-    );
+    if (action.type === "shortcut") {
+        const component = action.component;
+        const name = action.name;
+        callDBus(
+            "org.kde.kglobalaccel",
+            "/component/" + component,
+            "org.kde.kglobalaccel.Component",
+            "invokeShortcut",
+            name
+        );
+        return;
+    }
+
+    if (action.type === "command") {
+        const result = invokeCommandHelper(action, createCommandHelperClient());
+        if (!result.accepted) {
+            print("hotcorners-per-monitor: command helper error:", result.errorName);
+        }
+    }
 }
 
 function handleCorner(positionName) {
@@ -500,7 +539,7 @@ function handleCorner(positionName) {
     try {
         executeAction(action);
     } catch (e) {
-        print("hotcorners-per-monitor: failed to invoke shortcut:", e);
+        print("hotcorners-per-monitor: failed to invoke action:", e);
     }
 }
 

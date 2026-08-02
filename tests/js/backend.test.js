@@ -43,6 +43,56 @@ function makeTimerGateConfig() {
     };
 }
 
+function makeCommandGateConfig() {
+    return {
+        schemaVersion: 2,
+        monitors: {
+            "DP-1": {
+                TopLeft: {
+                    action: {
+                        type: "command",
+                        program: "/usr/bin/printf",
+                        arguments: ["%s\\n", "hello world"],
+                    },
+                    cooldownMs: 350,
+                },
+                Top: {
+                    action: {
+                        type: "command",
+                        program: "/usr/bin/echo",
+                        arguments: ["hello; touch /tmp/x", "$(id)", "*.txt", "a | b", ">output"],
+                    },
+                    cooldownMs: 350,
+                },
+                Right: {
+                    action: {
+                        type: "command",
+                        program: "/usr/bin/echo",
+                        arguments: ["ok"],
+                    },
+                    cooldownMs: 0,
+                },
+                BottomLeft: {
+                    action: {
+                        type: "command",
+                        program: "",
+                        arguments: ["bad"],
+                    },
+                    cooldownMs: 350,
+                },
+                Bottom: {
+                    action: {type: "none"},
+                    cooldownMs: 350,
+                },
+                BottomRight: {
+                    action: {type: "shortcut", component: "kwin", name: "Overview"},
+                    cooldownMs: 350,
+                },
+            },
+        },
+    };
+}
+
 function readFixture(name) {
     return JSON.parse(
         fs.readFileSync(path.join(ROOT, "tests/fixtures", name), "utf8"),
@@ -142,6 +192,7 @@ function createBackend({
     config = legacyConfig,
     qtimerOptions = {},
     callDBusImpl,
+    omitCallDBus = false,
 } = {}) {
     let rawConfig = typeof config === "string"
         ? config
@@ -167,7 +218,7 @@ function createBackend({
         ],
     };
 
-    const context = vm.createContext({
+    const contextValues = {
         KWin: ELECTRIC_BORDERS,
         workspace,
         QTimer: qtimer.QTimer,
@@ -182,17 +233,22 @@ function createBackend({
             callbacks.set(border, callback);
             return true;
         },
-        callDBus(...args) {
+        print(...args) {
+            prints.push(args);
+        },
+    };
+
+    if (!omitCallDBus) {
+        contextValues.callDBus = function(...args) {
             dbusCalls.push(args);
             if (callDBusImpl) {
                 return callDBusImpl(...args);
             }
             return undefined;
-        },
-        print(...args) {
-            prints.push(args);
-        },
-    });
+        };
+    }
+
+    const context = vm.createContext(contextValues);
 
     vm.runInContext(backendSource, context, {filename: BACKEND_PATH});
 
@@ -247,6 +303,33 @@ test("dispatches a legacy shortcut for the output under the cursor", () => {
         "invokeShortcut",
         "Overview",
     ]]);
+});
+
+test("command A/B/C: valid command dispatches one helper call with exact argv JSON", () => {
+    const backend = createBackend({config: makeCommandGateConfig()});
+    backend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(backend, "ElectricTopLeft")();
+
+    assert.equal(backend.dbusCalls.length, 1);
+    const [bus, objectPath, interfaceName, methodName, program, argumentsJson] = backend.dbusCalls[0];
+    assert.equal(bus, "org.flark.HotCorners.CommandRunner");
+    assert.equal(objectPath, "/CommandRunner");
+    assert.equal(interfaceName, "org.flark.HotCorners.CommandRunner1");
+    assert.equal(methodName, "Run");
+    assert.equal(program, "/usr/bin/printf");
+    assert.deepEqual(JSON.parse(argumentsJson), ["%s\\n", "hello world"]);
+
+    const config = makeCommandGateConfig();
+    const shellArgs = config.monitors["DP-1"].Top.action.arguments;
+    backend.workspace.cursorPos = {x: 10, y: 10};
+    callbackFor(backend, "ElectricTop")();
+    assert.deepEqual(JSON.parse(backend.dbusCalls[1][5]), shellArgs);
+
+    assert.equal(
+        backend.dbusCalls.some(call => call[0] === "org.kde.kglobalaccel"),
+        false,
+    );
 });
 
 test("runtime load migrates v0.1 to v0.2 in memory without writing", () => {
@@ -366,17 +449,12 @@ test("H: none action dispatches nothing and starts no timer", () => {
     assert.equal(backend.timers.length, 0);
 });
 
-test("I: non-executable actions are ignored without timer state", () => {
-    const config = makeTimerGateConfig();
-    config.monitors["DP-1"].TopLeft.action = {
-        type: "command",
-        program: "echo",
-        arguments: ["hello"],
-    };
+test("I: invalid command action is ignored without timer state", () => {
+    const config = makeCommandGateConfig();
     const backend = createBackend({config});
     backend.workspace.cursorPos = {x: 10, y: 10};
 
-    callbackFor(backend, "ElectricTopLeft")();
+    callbackFor(backend, "ElectricBottomLeft")();
 
     assert.equal(backend.dbusCalls.length, 0);
     assert.equal(backend.timers.length, 0);
@@ -560,6 +638,259 @@ test("R: separator-like names are collision-safe for cooldown identity", () => {
 
     assert.equal(backend.dbusCalls.length, 2);
     assert.equal(backend.timers.length, 2);
+});
+
+test("command D: cooldown blocks second command without timer restart", () => {
+    const backend = createBackend({config: makeCommandGateConfig()});
+    backend.workspace.cursorPos = {x: 10, y: 10};
+    const trigger = callbackFor(backend, "ElectricTopLeft");
+
+    trigger();
+    trigger();
+
+    assert.equal(backend.dbusCalls.length, 1);
+    assert.equal(backend.timers.length, 1);
+    assert.equal(backend.timers[0].startCallCount, 1);
+});
+
+test("command E: timeout releases cooldown and next trigger dispatches again", () => {
+    const backend = createBackend({config: makeCommandGateConfig()});
+    backend.workspace.cursorPos = {x: 10, y: 10};
+    const trigger = callbackFor(backend, "ElectricTopLeft");
+
+    trigger();
+    backend.timers[0].fireTimeout();
+    trigger();
+
+    assert.equal(backend.dbusCalls.length, 2);
+    assert.equal(totalStartCalls(backend.timers), 2);
+});
+
+test("command F: cooldown 0 allows immediate repeated helper calls", () => {
+    const backend = createBackend({config: makeCommandGateConfig()});
+    backend.workspace.cursorPos = {x: 10, y: 10};
+    const trigger = callbackFor(backend, "ElectricRight");
+
+    trigger();
+    trigger();
+
+    assert.equal(backend.dbusCalls.length, 2);
+    assert.equal(backend.timers.length, 0);
+});
+
+test("command G: helper rejection logs error name and keeps cooldown active", () => {
+    const backend = createBackend({
+        config: makeCommandGateConfig(),
+        callDBusImpl() {
+            return [false, "program-not-found"];
+        },
+    });
+    backend.workspace.cursorPos = {x: 10, y: 10};
+    const trigger = callbackFor(backend, "ElectricTopLeft");
+
+    trigger();
+    trigger();
+
+    assert.equal(backend.dbusCalls.length, 1);
+    assert.equal(
+        backend.prints.some(args => args.join(" ").includes("command helper error: program-not-found")),
+        true,
+    );
+    assert.equal(backend.timers.length, 1);
+    assert.equal(backend.timers[0].active, true);
+});
+
+test("command H: helper accepted result logs no error", () => {
+    const backend = createBackend({
+        config: makeCommandGateConfig(),
+        callDBusImpl() {
+            return [true, ""];
+        },
+    });
+    backend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(backend, "ElectricTopLeft")();
+
+    assert.equal(backend.dbusCalls.length, 1);
+    assert.equal(
+        backend.prints.some(args => args.join(" ").includes("command helper error")),
+        false,
+    );
+});
+
+test("command I: malformed helper responses fail safe with invalid-helper-response", () => {
+    const malformedValues = [null, [true], ["yes", ""], [true, 1]];
+
+    for (const malformed of malformedValues) {
+        const backend = createBackend({
+            config: makeCommandGateConfig(),
+            callDBusImpl() {
+                return malformed;
+            },
+        });
+        backend.workspace.cursorPos = {x: 10, y: 10};
+
+        callbackFor(backend, "ElectricTopLeft")();
+
+        assert.equal(backend.dbusCalls.length, 1);
+        assert.equal(
+            backend.prints.some(args => args.join(" ").includes("command helper error: invalid-helper-response")),
+            true,
+        );
+    }
+});
+
+test("command J: transport failure is logged and never retried", () => {
+    let calls = 0;
+    const backend = createBackend({
+        config: makeCommandGateConfig(),
+        callDBusImpl() {
+            calls++;
+            throw new Error("dbus transport down");
+        },
+    });
+    backend.workspace.cursorPos = {x: 10, y: 10};
+    const trigger = callbackFor(backend, "ElectricTopLeft");
+
+    trigger();
+    trigger();
+
+    assert.equal(calls, 1);
+    assert.equal(backend.dbusCalls.length, 1);
+    assert.equal(
+        backend.prints.some(args => args.join(" ").includes("command helper error: transport-error")),
+        true,
+    );
+});
+
+test("command K: helper unavailable logs fail-safe and does not fallback", () => {
+    const backend = createBackend({
+        config: makeCommandGateConfig(),
+        omitCallDBus: true,
+    });
+    backend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(backend, "ElectricTopLeft")();
+
+    assert.equal(backend.dbusCalls.length, 0);
+    assert.equal(
+        backend.prints.some(args => args.join(" ").includes("command helper error: helper-unavailable")),
+        true,
+    );
+    assert.equal(
+        backend.prints.some(args => args.join(" ").includes("invokeShortcut")),
+        false,
+    );
+});
+
+test("command L: invalid command argument shapes never consume cooldown", () => {
+    const invalidActions = [
+        {type: "command", program: "/usr/bin/echo", arguments: "no-array"},
+        {type: "command", program: "/usr/bin/echo", arguments: ["ok", 1]},
+    ];
+
+    for (const action of invalidActions) {
+        const config = makeCommandGateConfig();
+        config.monitors["DP-1"].BottomLeft.action = action;
+        const backend = createBackend({config});
+        backend.workspace.cursorPos = {x: 10, y: 10};
+
+        callbackFor(backend, "ElectricBottomLeft")();
+
+        assert.equal(backend.dbusCalls.length, 0);
+        assert.equal(backend.timers.length, 0);
+    }
+});
+
+test("command N: reload clears command cooldown and stale timeout callback is harmless", () => {
+    const backend = createBackend({config: makeCommandGateConfig()});
+    backend.workspace.cursorPos = {x: 10, y: 10};
+    const trigger = callbackFor(backend, "ElectricTopLeft");
+
+    trigger();
+    assert.equal(backend.dbusCalls.length, 1);
+
+    backend.setConfig(makeCommandGateConfig());
+    backend.context.loadConfig();
+    assert.equal(backend.timers[0].stopCallCount, 1);
+
+    backend.timers[0].fireTimeout();
+    assert.equal(backend.dbusCalls.length, 1);
+
+    trigger();
+    assert.equal(backend.dbusCalls.length, 2);
+});
+
+test("command M: none and shortcut remain regression-free", () => {
+    const backend = createBackend({config: makeCommandGateConfig()});
+    backend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(backend, "ElectricBottom")();
+    assert.equal(backend.dbusCalls.length, 0);
+
+    callbackFor(backend, "ElectricBottomRight")();
+    assert.equal(backend.dbusCalls.length, 1);
+    assert.equal(backend.dbusCalls[0][0], "org.kde.kglobalaccel");
+});
+
+test("command N/P: cleanup removes stale command timers and each admission calls helper once", () => {
+    const backend = createBackend({config: makeCommandGateConfig()});
+    backend.workspace.cursorPos = {x: 10, y: 10};
+    const trigger = callbackFor(backend, "ElectricTopLeft");
+
+    trigger();
+    assert.equal(backend.dbusCalls.length, 1);
+
+    backend.context.cleanupRuntime();
+    backend.timers[0].fireTimeout();
+    assert.equal(backend.dbusCalls.length, 1);
+
+    trigger();
+    assert.equal(backend.dbusCalls.length, 2);
+});
+
+test("command O: runtime never writes config for command outcomes", () => {
+    const responses = [
+        [true, ""],
+        [false, "program-not-found"],
+        null,
+    ];
+
+    for (const response of responses) {
+        const backend = createBackend({
+            config: makeCommandGateConfig(),
+            callDBusImpl() {
+                if (response === null) {
+                    throw new Error("transport");
+                }
+                return response;
+            },
+        });
+        backend.workspace.cursorPos = {x: 10, y: 10};
+
+        const trigger = callbackFor(backend, "ElectricTopLeft");
+        trigger();
+        trigger();
+
+        assert.deepEqual(backend.writes, []);
+    }
+});
+
+test("command Q: logs omit command payload content", () => {
+    const backend = createBackend({
+        config: makeCommandGateConfig(),
+        callDBusImpl() {
+            return [false, "program-not-found"];
+        },
+    });
+    backend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(backend, "ElectricTop")();
+
+    const joinedLogs = backend.prints.map(args => args.join(" ")).join("\n");
+    assert.equal(joinedLogs.includes("hello; touch /tmp/x"), false);
+    assert.equal(joinedLogs.includes("$(id)"), false);
+    assert.equal(joinedLogs.includes("program-not-found"), true);
 });
 
 test("runtime normalization and dispatch do not mutate input fixtures", () => {
