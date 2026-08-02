@@ -11,6 +11,10 @@ SCHEMA_VERSION = 2
 DEFAULT_COOLDOWN_MS = 350
 LEGACY_COOLDOWN_MS = 0
 MAX_COOLDOWN_MS = 10_000
+MAX_COMMAND_PROGRAM_BYTES = 4096
+MAX_COMMAND_ARGUMENTS = 128
+MAX_COMMAND_ARGUMENT_BYTES = 16 * 1024
+MAX_COMMAND_TOTAL_ARGUMENT_BYTES = 128 * 1024
 POSITIONS = frozenset({
     "TopLeft",
     "Top",
@@ -35,6 +39,60 @@ def _is_object(value):
     return isinstance(value, dict)
 
 
+def _utf8_byte_length(value):
+    return len(value.encode("utf-8"))
+
+
+def validate_command_program(program):
+    if not isinstance(program, str) or not program:
+        return False, "invalid-program"
+    if "\x00" in program:
+        return False, "invalid-program"
+    if _utf8_byte_length(program) > MAX_COMMAND_PROGRAM_BYTES:
+        return False, "invalid-program"
+    return True, ""
+
+
+def validate_command_arguments(arguments):
+    if not isinstance(arguments, list):
+        return False, "invalid-arguments"
+    if len(arguments) > MAX_COMMAND_ARGUMENTS:
+        return False, "invalid-arguments"
+
+    total_bytes = 0
+    for argument in arguments:
+        if not isinstance(argument, str):
+            return False, "invalid-arguments"
+        if "\x00" in argument:
+            return False, "invalid-arguments"
+
+        size = _utf8_byte_length(argument)
+        if size > MAX_COMMAND_ARGUMENT_BYTES:
+            return False, "invalid-arguments"
+
+        total_bytes += size
+        if total_bytes > MAX_COMMAND_TOTAL_ARGUMENT_BYTES:
+            return False, "invalid-arguments"
+
+    return True, ""
+
+
+def build_command_action(program, arguments):
+    program_ok, program_error = validate_command_program(program)
+    if not program_ok:
+        raise InvalidConfig(program_error)
+
+    arguments_ok, arguments_error = validate_command_arguments(arguments)
+    if not arguments_ok:
+        raise InvalidConfig(arguments_error)
+
+    return {
+        "type": "command",
+        "program": program,
+        "arguments": deepcopy(arguments),
+    }
+
+
 def _normalize_action(action):
     if not _is_object(action):
         return None
@@ -55,15 +113,17 @@ def _normalize_action(action):
             return normalized
         return None
     if action_type == "command":
-        program = action.get("program")
-        arguments = action.get("arguments")
-        if (isinstance(program, str) and program
-                and isinstance(arguments, list)
-                and all(isinstance(arg, str) for arg in arguments)):
-            normalized["type"] = "command"
-            normalized["program"] = program
-            normalized["arguments"] = deepcopy(arguments)
-            return normalized
+        try:
+            command_action = build_command_action(
+                action.get("program"),
+                action.get("arguments"),
+            )
+        except InvalidConfig:
+            return None
+        normalized["type"] = "command"
+        normalized["program"] = command_action["program"]
+        normalized["arguments"] = command_action["arguments"]
+        return normalized
     return None
 
 

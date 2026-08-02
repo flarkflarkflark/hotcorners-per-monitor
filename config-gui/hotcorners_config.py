@@ -20,7 +20,13 @@ from pathlib import Path
 from uuid import uuid4
 
 from config_schema import (
-    create_v2_binding, normalize_config_to_v2,
+    DEFAULT_COOLDOWN_MS,
+    InvalidConfig,
+    build_command_action,
+    create_v2_binding,
+    normalize_config_to_v2,
+    validate_command_arguments,
+    validate_command_program,
 )
 from PyQt6.QtCore import Qt, QSize, QRect, pyqtSignal
 from PyQt6.QtGui import (
@@ -28,8 +34,9 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QDialogButtonBox, QFormLayout,
-    QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
-    QMessageBox, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
+    QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
+    QMainWindow, QMessageBox, QPushButton, QSizePolicy, QVBoxLayout,
+    QWidget, QInputDialog,
 )
 
 # -----------------------------------------------------------------------------
@@ -198,6 +205,14 @@ POSITION_IDS = [pid for (pid, _label) in POSITION_LAYOUT]
 # Mark for xgettext
 _("Top-left"); _("Top"); _("Top-right"); _("Left"); _("Right")
 _("Bottom-left"); _("Bottom"); _("Bottom-right")
+_("Command"); _("Program"); _("Arguments")
+_("Add"); _("Edit"); _("Remove"); _("Move Up"); _("Move Down")
+_("Argument")
+_("Enter argument value:")
+_("Command action runs the program with argv items exactly as listed.")
+_("Command program cannot be empty.")
+_("Command program is invalid.")
+_("Command arguments are invalid.")
 
 def position_label(pos_id: str) -> str:
     for pid, label in POSITION_LAYOUT:
@@ -206,6 +221,60 @@ def position_label(pos_id: str) -> str:
     return pos_id
 
 NONE_ACTION = {"type": "none"}
+DEFAULT_SHORTCUT_ACTION = {
+    "type": "shortcut",
+    "component": "kwin",
+    "name": "Overview",
+}
+DEFAULT_COMMAND_ACTION = {
+    "type": "command",
+    "program": "",
+    "arguments": [],
+}
+KNOWN_ACTION_KEYS = {
+    "type",
+    "component",
+    "name",
+    "program",
+    "arguments",
+}
+
+
+def _clone_action(action: dict | None) -> dict:
+    if not isinstance(action, dict):
+        return dict(NONE_ACTION)
+    return json.loads(json.dumps(action))
+
+
+def _merge_action_extensions(base_action: dict | None, canonical_action: dict) -> dict:
+    merged = {}
+    if isinstance(base_action, dict):
+        for key, value in base_action.items():
+            if key in KNOWN_ACTION_KEYS:
+                continue
+            merged[key] = json.loads(json.dumps(value))
+
+    merged.update(json.loads(json.dumps(canonical_action)))
+    return merged
+
+
+def _command_action_from_editor(program: str, arguments: list[str], preserved: dict | None) -> dict:
+    ok, error = validate_command_program(program)
+    if not ok:
+        return _merge_action_extensions(
+            preserved,
+            {"type": "command", "program": program, "arguments": list(arguments)},
+        )
+
+    ok, error = validate_command_arguments(arguments)
+    if not ok:
+        return _merge_action_extensions(
+            preserved,
+            {"type": "command", "program": program, "arguments": list(arguments)},
+        )
+
+    canonical = build_command_action(program, arguments)
+    return _merge_action_extensions(preserved, canonical)
 
 # -----------------------------------------------------------------------------
 # Monitor detection
@@ -451,10 +520,15 @@ class ActionEditor(QWidget):
 
     def __init__(self, action: dict, parent=None):
         super().__init__(parent)
-        self.action = dict(action) if action else dict(NONE_ACTION)
         self._suppress_signals = False
+        self._draft_actions = {
+            "none": dict(NONE_ACTION),
+            "shortcut": dict(DEFAULT_SHORTCUT_ACTION),
+            "command": dict(DEFAULT_COMMAND_ACTION),
+        }
+        self.action = dict(NONE_ACTION)
         self._build_ui()
-        self._populate_from_action()
+        self.set_action(action)
 
     def _build_ui(self):
         layout = QFormLayout(self)
@@ -465,6 +539,7 @@ class ActionEditor(QWidget):
         self.type_combo = QComboBox()
         self.type_combo.addItem(_("No action"), "none")
         self.type_combo.addItem(_("Trigger shortcut"), "shortcut")
+        self.type_combo.addItem(_("Command"), "command")
         self.type_combo.currentIndexChanged.connect(self._on_type_changed)
         layout.addRow(_("Action:"), self.type_combo)
 
@@ -488,70 +563,139 @@ class ActionEditor(QWidget):
         layout.addRow(_("Shortcut name:"), self.custom_name)
         self._name_row_label = layout.labelForField(self.custom_name)
 
+        self.command_program = QLineEdit()
+        self.command_program.textChanged.connect(self._on_command_changed)
+        layout.addRow(_("Program"), self.command_program)
+        self._command_program_label = layout.labelForField(self.command_program)
+
+        self.command_arguments = QListWidget()
+        self.command_arguments.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        layout.addRow(_("Arguments"), self.command_arguments)
+        self._command_arguments_label = layout.labelForField(self.command_arguments)
+
+        command_buttons_wrap = QWidget()
+        command_buttons = QHBoxLayout(command_buttons_wrap)
+        command_buttons.setContentsMargins(0, 0, 0, 0)
+        command_buttons.setSpacing(6)
+
+        self.arg_add_btn = QPushButton(_("Add"))
+        self.arg_edit_btn = QPushButton(_("Edit"))
+        self.arg_remove_btn = QPushButton(_("Remove"))
+        self.arg_up_btn = QPushButton(_("Move Up"))
+        self.arg_down_btn = QPushButton(_("Move Down"))
+
+        self.arg_add_btn.clicked.connect(self._on_add_argument)
+        self.arg_edit_btn.clicked.connect(self._on_edit_argument)
+        self.arg_remove_btn.clicked.connect(self._remove_selected_argument)
+        self.arg_up_btn.clicked.connect(self._move_argument_up)
+        self.arg_down_btn.clicked.connect(self._move_argument_down)
+
+        for button in (
+            self.arg_add_btn,
+            self.arg_edit_btn,
+            self.arg_remove_btn,
+            self.arg_up_btn,
+            self.arg_down_btn,
+        ):
+            command_buttons.addWidget(button)
+        command_buttons.addStretch(1)
+        layout.addRow("", command_buttons_wrap)
+        self._command_buttons_row = command_buttons_wrap
+
         self.hint = QLabel()
         self.hint.setWordWrap(True)
         self.hint.setStyleSheet("color: palette(mid); font-size: 10pt;")
         layout.addRow(self.hint)
 
-    def _populate_from_action(self):
+    def _update_shortcut_widgets_from_action(self, action: dict):
+        comp = action.get("component", "kwin")
+        name = action.get("name", "")
+
+        matched = False
+        for i in range(self.shortcut_combo.count()):
+            data = self.shortcut_combo.itemData(i)
+            if data == (comp, name):
+                self.shortcut_combo.setCurrentIndex(i)
+                matched = True
+                break
+
+        if not matched:
+            custom_idx = self.shortcut_combo.findData(("__custom__", ""))
+            if custom_idx >= 0:
+                self.shortcut_combo.setCurrentIndex(custom_idx)
+
+        self.custom_component.setText(comp)
+        self.custom_name.setText(name)
+
+    def _update_command_widgets_from_action(self, action: dict):
+        self.command_program.setText(action.get("program", ""))
+        self.command_arguments.clear()
+        for argument in action.get("arguments", []):
+            self.command_arguments.addItem(argument)
+
+    def _populate_from_current_type(self):
         self._suppress_signals = True
-        atype = self.action.get("type", "none")
-        idx = self.type_combo.findData(atype)
-        if idx >= 0:
-            self.type_combo.setCurrentIndex(idx)
+        atype = self.type_combo.currentData() or "none"
+        current = _clone_action(self._draft_actions.get(atype, {"type": atype}))
 
         if atype == "shortcut":
-            comp = self.action.get("component", "kwin")
-            name = self.action.get("name", "")
-            matched = False
-            for i in range(self.shortcut_combo.count()):
-                data = self.shortcut_combo.itemData(i)
-                if data == (comp, name):
-                    self.shortcut_combo.setCurrentIndex(i)
-                    matched = True
-                    break
-            if not matched:
-                custom_idx = self.shortcut_combo.findData(("__custom__", ""))
-                if custom_idx >= 0:
-                    self.shortcut_combo.setCurrentIndex(custom_idx)
-                self.custom_component.setText(comp)
-                self.custom_name.setText(name)
+            self._update_shortcut_widgets_from_action(current)
+        elif atype == "command":
+            self._update_command_widgets_from_action(current)
+
+        self.action = current
         self._suppress_signals = False
         self._update_visibility()
 
     def _emit(self):
         if not self._suppress_signals:
-            self.actionChanged.emit(dict(self.action))
+            self.actionChanged.emit(_clone_action(self.action))
+
+    def _sync_shortcut_action_from_widgets(self):
+        data = self.shortcut_combo.currentData()
+        if not data:
+            return
+
+        comp, name = data
+        if comp == "__custom__":
+            comp = self.custom_component.text().strip() or "kwin"
+            name = self.custom_name.text().strip()
+
+        canonical = {
+            "type": "shortcut",
+            "component": comp,
+            "name": name,
+        }
+        previous = self._draft_actions.get("shortcut")
+        self.action = _merge_action_extensions(previous, canonical)
+        self._draft_actions["shortcut"] = _clone_action(self.action)
+
+    def _sync_command_action_from_widgets(self):
+        arguments = [
+            self.command_arguments.item(i).text()
+            for i in range(self.command_arguments.count())
+        ]
+        previous = self._draft_actions.get("command")
+        self.action = _command_action_from_editor(
+            self.command_program.text(),
+            arguments,
+            previous,
+        )
+        self._draft_actions["command"] = _clone_action(self.action)
 
     def _on_type_changed(self):
         if self._suppress_signals:
             return
+
+        self._populate_from_current_type()
         atype = self.type_combo.currentData()
-        if atype == "none":
-            self.action = dict(NONE_ACTION)
-        else:
-            self.action = {"type": "shortcut", "component": "kwin",
-                           "name": "Overview"}
-            self._populate_from_action()
-        self._update_visibility()
+        self.action = _clone_action(self._draft_actions.get(atype, dict(NONE_ACTION)))
         self._emit()
 
     def _on_shortcut_changed(self):
         if self._suppress_signals:
             return
-        data = self.shortcut_combo.currentData()
-        if not data:
-            return
-        comp, name = data
-        if comp == "__custom__":
-            self._update_visibility()
-            self._emit()
-            return
-        self.action = {"type": "shortcut", "component": comp, "name": name}
-        self._suppress_signals = True
-        self.custom_component.setText(comp)
-        self.custom_name.setText(name)
-        self._suppress_signals = False
+        self._sync_shortcut_action_from_widgets()
         self._update_visibility()
         self._emit()
 
@@ -559,12 +703,79 @@ class ActionEditor(QWidget):
         if self._suppress_signals:
             return
         if self.shortcut_combo.currentData() == ("__custom__", ""):
-            self.action = {
-                "type": "shortcut",
-                "component": self.custom_component.text().strip() or "kwin",
-                "name": self.custom_name.text().strip(),
-            }
+            self._sync_shortcut_action_from_widgets()
             self._emit()
+
+    def _add_argument_value(self, value: str):
+        self.command_arguments.addItem(value)
+        self.command_arguments.setCurrentRow(self.command_arguments.count() - 1)
+        self._sync_command_action_from_widgets()
+        self._emit()
+
+    def _edit_selected_argument_value(self, value: str):
+        row = self.command_arguments.currentRow()
+        if row < 0:
+            return
+        self.command_arguments.item(row).setText(value)
+        self._sync_command_action_from_widgets()
+        self._emit()
+
+    def _remove_selected_argument(self):
+        row = self.command_arguments.currentRow()
+        if row < 0:
+            return
+        self.command_arguments.takeItem(row)
+        if row >= self.command_arguments.count():
+            row = self.command_arguments.count() - 1
+        if row >= 0:
+            self.command_arguments.setCurrentRow(row)
+        self._sync_command_action_from_widgets()
+        self._emit()
+
+    def _move_argument_up(self):
+        row = self.command_arguments.currentRow()
+        if row <= 0:
+            return
+        item = self.command_arguments.takeItem(row)
+        self.command_arguments.insertItem(row - 1, item)
+        self.command_arguments.setCurrentRow(row - 1)
+        self._sync_command_action_from_widgets()
+        self._emit()
+
+    def _move_argument_down(self):
+        row = self.command_arguments.currentRow()
+        if row < 0 or row >= self.command_arguments.count() - 1:
+            return
+        item = self.command_arguments.takeItem(row)
+        self.command_arguments.insertItem(row + 1, item)
+        self.command_arguments.setCurrentRow(row + 1)
+        self._sync_command_action_from_widgets()
+        self._emit()
+
+    def _on_add_argument(self):
+        value, ok = QInputDialog.getText(self, _("Argument"), _("Enter argument value:"))
+        if ok:
+            self._add_argument_value(value)
+
+    def _on_edit_argument(self):
+        row = self.command_arguments.currentRow()
+        if row < 0:
+            return
+        current_value = self.command_arguments.item(row).text()
+        value, ok = QInputDialog.getText(
+            self,
+            _("Argument"),
+            _("Enter argument value:"),
+            text=current_value,
+        )
+        if ok:
+            self._edit_selected_argument_value(value)
+
+    def _on_command_changed(self):
+        if self._suppress_signals:
+            return
+        self._sync_command_action_from_widgets()
+        self._emit()
 
     def _update_visibility(self):
         atype = self.type_combo.currentData()
@@ -572,12 +783,20 @@ class ActionEditor(QWidget):
         is_custom = is_shortcut and (
             self.shortcut_combo.currentData() == ("__custom__", "")
         )
+        is_command = (atype == "command")
+
         self.shortcut_combo.setVisible(is_shortcut)
         self._shortcut_row_label.setVisible(is_shortcut)
         self.custom_component.setVisible(is_custom)
         self._component_row_label.setVisible(is_custom)
         self.custom_name.setVisible(is_custom)
         self._name_row_label.setVisible(is_custom)
+
+        self.command_program.setVisible(is_command)
+        self._command_program_label.setVisible(is_command)
+        self.command_arguments.setVisible(is_command)
+        self._command_arguments_label.setVisible(is_command)
+        self._command_buttons_row.setVisible(is_command)
 
         if atype == "none":
             self.hint.setText(_(
@@ -590,6 +809,10 @@ class ActionEditor(QWidget):
                 "/component/&lt;component&gt; "
                 "org.kde.kglobalaccel.Component.shortcutNames</code>"
             ))
+        elif is_command:
+            self.hint.setText(_(
+                "Command action runs the program with argv items exactly as listed."
+            ))
         else:
             self.hint.setText(_(
                 "The selected shortcut will be invoked when the cursor "
@@ -597,11 +820,29 @@ class ActionEditor(QWidget):
             ))
 
     def set_action(self, action: dict):
-        self.action = dict(action) if action else dict(NONE_ACTION)
-        self._populate_from_action()
+        loaded = _clone_action(action)
+        atype = loaded.get("type")
+        if atype not in {"none", "shortcut", "command"}:
+            atype = "none"
+            loaded = dict(NONE_ACTION)
+
+        self._draft_actions = {
+            "none": dict(NONE_ACTION),
+            "shortcut": dict(DEFAULT_SHORTCUT_ACTION),
+            "command": dict(DEFAULT_COMMAND_ACTION),
+        }
+        self._draft_actions[atype] = loaded
+
+        self._suppress_signals = True
+        idx = self.type_combo.findData(atype)
+        if idx >= 0:
+            self.type_combo.setCurrentIndex(idx)
+        self._suppress_signals = False
+
+        self._populate_from_current_type()
 
     def current_action(self) -> dict:
-        return dict(self.action)
+        return _clone_action(self.action)
 
 
 # -----------------------------------------------------------------------------
@@ -729,13 +970,48 @@ class MainWindow(QMainWindow):
             monitor = monitors.setdefault(monitor_name, {})
             binding = monitor.get(position_id)
             if binding:
-                binding["action"] = dict(action)
+                binding["action"] = _clone_action(action)
             else:
-                monitor[position_id] = create_v2_binding(action)
+                try:
+                    monitor[position_id] = create_v2_binding(action)
+                except InvalidConfig:
+                    monitor[position_id] = {
+                        "action": _clone_action(action),
+                        "cooldownMs": DEFAULT_COOLDOWN_MS,
+                    }
         self.canvas.set_config(self.config)
+
+    def _validate_config_for_save(self):
+        monitors = self.config.get("monitors", {})
+        for monitor_name, monitor in monitors.items():
+            if not isinstance(monitor, dict):
+                continue
+            for position_id, binding in monitor.items():
+                if not isinstance(binding, dict):
+                    continue
+                action = binding.get("action")
+                if not isinstance(action, dict):
+                    continue
+                if action.get("type") != "command":
+                    continue
+
+                program_ok, program_error = validate_command_program(action.get("program"))
+                if not program_ok:
+                    return False, _("Command program cannot be empty.") if program_error == "invalid-program" else _("Command program is invalid.")
+
+                arguments_ok, _arguments_error = validate_command_arguments(action.get("arguments"))
+                if not arguments_ok:
+                    return False, _("Command arguments are invalid.")
+        return True, ""
 
     def _on_apply(self):
         config = self.config if self.config_valid else None
+
+        valid, error_text = self._validate_config_for_save()
+        if not valid:
+            QMessageBox.critical(self, _("Save failed"), error_text)
+            return
+
         try:
             updated_baseline = save_config(config, self.config_baseline)
         except StaleConfigError:
