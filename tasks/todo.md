@@ -18,7 +18,7 @@
 - [x] Add per-binding cooldown with fake-clock tests.
 - [x] Complete Plasma 6.4 Wayland/X11 QTimer capability gates (6.7 Wayland smoke passes).
 - [x] Apply timer-backed cooldown gating in KWin runtime.
-- [ ] Add specified session-D-Bus command runner without implicit shell.
+- [x] Add specified session-D-Bus command runner without implicit shell.
 - [x] Add no-shell command helper client contract in KWin runtime.
 - [ ] Install/remove the helper and D-Bus metadata through an ownership manifest.
 - [ ] Add command/cooldown PyQt controls and fix installed gettext lookup.
