@@ -11,6 +11,38 @@ const legacyConfig = readFixture("v0.1-config.json");
 const v2Config = readFixture("v0.2-migrated-config.json");
 const extensionConfig = readFixture("v0.2-config-with-extensions.json");
 
+function makeTimerGateConfig() {
+    return {
+        schemaVersion: 2,
+        monitors: {
+            "DP-1": {
+                TopLeft: {
+                    action: {type: "shortcut", component: "kwin", name: "Overview"},
+                    cooldownMs: 350,
+                },
+                Top: {
+                    action: {type: "shortcut", component: "kwin", name: "Present Windows"},
+                    cooldownMs: 350,
+                },
+                BottomRight: {
+                    action: {type: "none"},
+                    cooldownMs: 350,
+                },
+            },
+            "HDMI-A-1": {
+                TopRight: {
+                    action: {type: "shortcut", component: "ksmserver", name: "Lock Session"},
+                    cooldownMs: 350,
+                },
+                TopLeft: {
+                    action: {type: "shortcut", component: "kwin", name: "Overview"},
+                    cooldownMs: 350,
+                },
+            },
+        },
+    };
+}
+
 function readFixture(name) {
     return JSON.parse(
         fs.readFileSync(path.join(ROOT, "tests/fixtures", name), "utf8"),
@@ -32,14 +64,95 @@ const ELECTRIC_BORDERS = {
     ElectricLeft: 7,
 };
 
-function createBackend(config = legacyConfig) {
+function makeFakeQTimerHarness(options = {}) {
+    const timers = [];
+
+    function QTimer() {
+        if (options.constructorThrows) {
+            throw new Error("fake constructor failure");
+        }
+
+        const behavior = options.perTimer?.[timers.length] ?? {};
+        const callbacks = [];
+        const timer = {
+            singleShot: false,
+            timerType: undefined,
+            intervalMs: undefined,
+            startCallCount: 0,
+            stopCallCount: 0,
+            timeoutConnectCount: 0,
+            timeoutFireCount: 0,
+            active: false,
+            setSingleShot(value) {
+                if (behavior.setSingleShotThrows) {
+                    throw new Error("fake setSingleShot failure");
+                }
+                timer.singleShot = Boolean(value);
+            },
+            setTimerType(value) {
+                if (behavior.setTimerTypeThrows) {
+                    throw new Error("fake setTimerType failure");
+                }
+                timer.timerType = value;
+            },
+            start(intervalMs) {
+                if (behavior.startThrows) {
+                    throw new Error("fake start failure");
+                }
+                timer.intervalMs = intervalMs;
+                timer.startCallCount++;
+                timer.active = true;
+            },
+            stop() {
+                timer.stopCallCount++;
+                timer.active = false;
+            },
+            isActive() {
+                return timer.active;
+            },
+            timeout: {
+                connect(callback) {
+                    if (behavior.connectThrows) {
+                        throw new Error("fake connect failure");
+                    }
+                    timer.timeoutConnectCount++;
+                    callbacks.push(callback);
+                },
+            },
+            fireTimeout() {
+                timer.timeoutFireCount++;
+                const toCall = callbacks.slice();
+                if (timer.singleShot) {
+                    timer.active = false;
+                }
+                for (const callback of toCall) {
+                    callback();
+                }
+            },
+        };
+
+        timers.push(timer);
+        return timer;
+    }
+
+    return {QTimer, timers};
+}
+
+function createBackend({
+    config = legacyConfig,
+    qtimerOptions = {},
+    callDBusImpl,
+} = {}) {
+    let rawConfig = typeof config === "string"
+        ? config
+        : JSON.stringify(config);
+
     const callbacks = new Map();
     const dbusCalls = [];
     const prints = [];
     const writes = [];
-    const rawConfig = typeof config === "string"
-        ? config
-        : JSON.stringify(config);
+    const qtimer = makeFakeQTimerHarness(qtimerOptions);
+
     const workspace = {
         cursorPos: {x: 100, y: 100},
         screens: [
@@ -53,9 +166,11 @@ function createBackend(config = legacyConfig) {
             },
         ],
     };
+
     const context = vm.createContext({
         KWin: ELECTRIC_BORDERS,
         workspace,
+        QTimer: qtimer.QTimer,
         readConfig(key) {
             assert.equal(key, "MonitorConfigs");
             return rawConfig;
@@ -69,6 +184,10 @@ function createBackend(config = legacyConfig) {
         },
         callDBus(...args) {
             dbusCalls.push(args);
+            if (callDBusImpl) {
+                return callDBusImpl(...args);
+            }
+            return undefined;
         },
         print(...args) {
             prints.push(args);
@@ -76,7 +195,33 @@ function createBackend(config = legacyConfig) {
     });
 
     vm.runInContext(backendSource, context, {filename: BACKEND_PATH});
-    return {callbacks, context, dbusCalls, prints, workspace, writes};
+
+    return {
+        callbacks,
+        context,
+        dbusCalls,
+        prints,
+        workspace,
+        writes,
+        timers: qtimer.timers,
+        setConfig(nextConfig) {
+            rawConfig = typeof nextConfig === "string"
+                ? nextConfig
+                : JSON.stringify(nextConfig);
+        },
+    };
+}
+
+function callbackFor(backend, borderName) {
+    return backend.callbacks.get(ELECTRIC_BORDERS[borderName]);
+}
+
+function totalStartCalls(timers) {
+    return timers.reduce((sum, timer) => sum + timer.startCallCount, 0);
+}
+
+function activeTimerCount(timers) {
+    return timers.filter(timer => timer.active).length;
 }
 
 test("registers all eight KWin electric borders", () => {
@@ -93,7 +238,7 @@ test("dispatches a legacy shortcut for the output under the cursor", () => {
     const backend = createBackend();
     backend.workspace.cursorPos = {x: 10, y: 10};
 
-    backend.callbacks.get(ELECTRIC_BORDERS.ElectricTopLeft)();
+    callbackFor(backend, "ElectricTopLeft")();
 
     assert.deepEqual(backend.dbusCalls, [[
         "org.kde.kglobalaccel",
@@ -104,32 +249,8 @@ test("dispatches a legacy shortcut for the output under the cursor", () => {
     ]]);
 });
 
-test("selects the matching monitor before dispatching a legacy shortcut", () => {
-    const backend = createBackend();
-    backend.workspace.cursorPos = {x: 3500, y: 10};
-
-    backend.callbacks.get(ELECTRIC_BORDERS.ElectricTopRight)();
-
-    assert.deepEqual(backend.dbusCalls, [[
-        "org.kde.kglobalaccel",
-        "/component/ksmserver",
-        "org.kde.kglobalaccel.Component",
-        "invokeShortcut",
-        "Lock Session",
-    ]]);
-});
-
-test("does not dispatch a legacy none action", () => {
-    const backend = createBackend();
-    backend.workspace.cursorPos = {x: 100, y: 100};
-
-    backend.callbacks.get(ELECTRIC_BORDERS.ElectricBottomRight)();
-
-    assert.deepEqual(backend.dbusCalls, []);
-});
-
 test("runtime load migrates v0.1 to v0.2 in memory without writing", () => {
-    const backend = createBackend(legacyConfig);
+    const backend = createBackend({config: legacyConfig});
 
     const config = plain(backend.context.loadRuntimeConfig());
 
@@ -138,98 +259,315 @@ test("runtime load migrates v0.1 to v0.2 in memory without writing", () => {
     assert.deepEqual(backend.writes, []);
 });
 
-test("dispatches a shortcut from normalized v0.2 config without writing", () => {
-    const backend = createBackend(v2Config);
+test("invalid JSON fails closed without writing or partial dispatch", () => {
+    const backend = createBackend({config: '{"DP-1":{"TopLeft":'});
+
+    callbackFor(backend, "ElectricTopLeft")();
+
+    assert.deepEqual(backend.dbusCalls, []);
+    assert.deepEqual(backend.writes, []);
+    assert.equal(
+        backend.prints.some(args => args.join(" ").includes("failed to load config")),
+        true,
+    );
+});
+
+test("A: first trigger starts one single-shot precise timer and dispatches once", () => {
+    const backend = createBackend({config: makeTimerGateConfig()});
     backend.workspace.cursorPos = {x: 3500, y: 10};
 
-    backend.callbacks.get(ELECTRIC_BORDERS.ElectricTopRight)();
+    callbackFor(backend, "ElectricTopRight")();
 
     assert.equal(backend.dbusCalls.length, 1);
-    assert.equal(backend.dbusCalls[0][4], "Lock Session");
-    assert.deepEqual(backend.writes, []);
+    assert.equal(backend.timers.length, 1);
+    assert.equal(backend.timers[0].singleShot, true);
+    assert.equal(backend.timers[0].timerType, 0);
+    assert.equal(backend.timers[0].intervalMs, 350);
+    assert.equal(backend.timers[0].startCallCount, 1);
+    assert.equal(backend.timers[0].active, true);
 });
 
-test("does not apply v0.2 cooldown during runtime dispatch yet", () => {
-    const config = structuredClone(v2Config);
-    config.monitors["DP-1"].TopLeft.cooldownMs = 350;
-    const backend = createBackend(config);
-    let cooldownCalls = 0;
-    backend.context.decideCooldown = () => {
-        cooldownCalls++;
-        throw new Error("cooldown must remain disconnected");
-    };
+test("B: trigger during active cooldown is denied without restart", () => {
+    const backend = createBackend({config: makeTimerGateConfig()});
+    backend.workspace.cursorPos = {x: 3500, y: 10};
+    const trigger = callbackFor(backend, "ElectricTopRight");
 
-    const callback = backend.callbacks.get(ELECTRIC_BORDERS.ElectricTopLeft);
-    callback();
-    callback();
+    trigger();
+    trigger();
+
+    assert.equal(backend.dbusCalls.length, 1);
+    assert.equal(backend.timers.length, 1);
+    assert.equal(backend.timers[0].startCallCount, 1);
+});
+
+test("C and D: timeout releases cooldown and denied trigger does not shift deadline", () => {
+    const backend = createBackend({config: makeTimerGateConfig()});
+    backend.workspace.cursorPos = {x: 3500, y: 10};
+    const trigger = callbackFor(backend, "ElectricTopRight");
+
+    trigger();
+    trigger();
+
+    assert.equal(totalStartCalls(backend.timers), 1);
+
+    backend.timers[0].fireTimeout();
+    trigger();
 
     assert.equal(backend.dbusCalls.length, 2);
-    assert.equal(cooldownCalls, 0);
+    assert.equal(totalStartCalls(backend.timers), 2);
+    assert.equal(activeTimerCount(backend.timers), 1);
 });
 
-test("does not dispatch explicit none from normalized v0.2 config", () => {
-    const backend = createBackend(v2Config);
-    const config = plain(backend.context.loadRuntimeConfig());
+test("E: cooldownMs zero bypasses timers and allows immediate repeats", () => {
+    const config = makeTimerGateConfig();
+    config.monitors["DP-1"].TopLeft.cooldownMs = 0;
+    const backend = createBackend({config});
+    backend.workspace.cursorPos = {x: 10, y: 10};
+    const trigger = callbackFor(backend, "ElectricTopLeft");
 
-    backend.callbacks.get(ELECTRIC_BORDERS.ElectricBottomRight)();
+    trigger();
+    trigger();
 
-    assert.equal(config.monitors["DP-1"].BottomRight.action.type, "none");
-    assert.deepEqual(backend.dbusCalls, []);
+    assert.equal(backend.dbusCalls.length, 2);
+    assert.equal(backend.timers.length, 0);
 });
 
-test("unsupported schema version fails closed without writing", () => {
-    const backend = createBackend({schemaVersion: 99, monitors: {}});
+test("F: cooldown state is independent per output", () => {
+    const backend = createBackend({config: makeTimerGateConfig()});
+    const trigger = callbackFor(backend, "ElectricTopLeft");
 
-    backend.callbacks.get(ELECTRIC_BORDERS.ElectricTopLeft)();
+    backend.workspace.cursorPos = {x: 3500, y: 10};
+    trigger();
+    backend.workspace.cursorPos = {x: 10, y: 10};
+    trigger();
 
-    assert.deepEqual(backend.dbusCalls, []);
+    assert.equal(backend.dbusCalls.length, 2);
+    assert.equal(backend.timers.length, 2);
+});
+
+test("G: cooldown state is independent per position", () => {
+    const backend = createBackend({config: makeTimerGateConfig()});
+    backend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(backend, "ElectricTopLeft")();
+    callbackFor(backend, "ElectricTop")();
+
+    assert.equal(backend.dbusCalls.length, 2);
+    assert.equal(backend.timers.length, 2);
+});
+
+test("H: none action dispatches nothing and starts no timer", () => {
+    const backend = createBackend({config: makeTimerGateConfig()});
+    backend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(backend, "ElectricBottomRight")();
+
+    assert.equal(backend.dbusCalls.length, 0);
+    assert.equal(backend.timers.length, 0);
+});
+
+test("I: non-executable actions are ignored without timer state", () => {
+    const config = makeTimerGateConfig();
+    config.monitors["DP-1"].TopLeft.action = {
+        type: "command",
+        program: "echo",
+        arguments: ["hello"],
+    };
+    const backend = createBackend({config});
+    backend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(backend, "ElectricTopLeft")();
+
+    assert.equal(backend.dbusCalls.length, 0);
+    assert.equal(backend.timers.length, 0);
+});
+
+test("J: config reload clears cooldown state and stops active timers", () => {
+    const backend = createBackend({config: makeTimerGateConfig()});
+    const triggerTopLeft = callbackFor(backend, "ElectricTopLeft");
+    const triggerTopRight = callbackFor(backend, "ElectricTopRight");
+
+    backend.workspace.cursorPos = {x: 10, y: 10};
+    triggerTopLeft();
+    backend.workspace.cursorPos = {x: 3500, y: 10};
+    triggerTopRight();
+
+    assert.equal(backend.timers.length, 2);
+
+    backend.setConfig(makeTimerGateConfig());
+    backend.context.loadConfig();
+
+    assert.equal(backend.timers[0].stopCallCount, 1);
+    assert.equal(backend.timers[1].stopCallCount, 1);
+
+    backend.workspace.cursorPos = {x: 10, y: 10};
+    triggerTopLeft();
+    assert.equal(backend.dbusCalls.length, 3);
+});
+
+test("K: cleanup stops timers and stale timeout callbacks become no-ops", () => {
+    const backend = createBackend({config: makeTimerGateConfig()});
+    backend.workspace.cursorPos = {x: 10, y: 10};
+    callbackFor(backend, "ElectricTopLeft")();
+    const shortcutCallsBefore = backend.dbusCalls.length;
+
+    backend.context.cleanupRuntime();
+    assert.equal(backend.timers[0].stopCallCount, 1);
+
+    backend.timers[0].fireTimeout();
+    assert.equal(backend.dbusCalls.length, shortcutCallsBefore);
+
+    callbackFor(backend, "ElectricTopLeft")();
+    assert.equal(backend.dbusCalls.length, shortcutCallsBefore + 1);
+});
+
+test("L: dispatch failure still consumes cooldown and blocks retrigger", () => {
+    let attempts = 0;
+    const backend = createBackend({
+        config: makeTimerGateConfig(),
+        callDBusImpl() {
+            attempts++;
+            throw new Error("defensive invokeShortcut failure");
+        },
+    });
+    backend.workspace.cursorPos = {x: 3500, y: 10};
+    const trigger = callbackFor(backend, "ElectricTopRight");
+
+    trigger();
+    trigger();
+
+    assert.equal(attempts, 1);
+    assert.equal(backend.timers.length, 1);
+    assert.equal(backend.timers[0].active, true);
+
+    backend.timers[0].fireTimeout();
+    trigger();
+    assert.equal(attempts, 2);
+});
+
+test("M: runtime never writes config while gating, reloading, or cleaning", () => {
+    const backend = createBackend({config: makeTimerGateConfig()});
+    backend.workspace.cursorPos = {x: 3500, y: 10};
+    const trigger = callbackFor(backend, "ElectricTopRight");
+
+    trigger();
+    trigger();
+    backend.timers[0].fireTimeout();
+    trigger();
+    backend.context.loadConfig();
+    backend.context.cleanupRuntime();
+
     assert.deepEqual(backend.writes, []);
+});
+
+test("N: timer constructor failure fails safe without dispatch or state", () => {
+    const backend = createBackend({
+        config: makeTimerGateConfig(),
+        qtimerOptions: {constructorThrows: true},
+    });
+    backend.workspace.cursorPos = {x: 3500, y: 10};
+
+    callbackFor(backend, "ElectricTopRight")();
+
+    assert.equal(backend.dbusCalls.length, 0);
+    assert.equal(backend.timers.length, 0);
     assert.equal(
-        backend.prints.some(args => args.join(" ").includes("failed to load config")),
+        backend.prints.some(args => args.join(" ").includes("failed to start cooldown timer")),
         true,
     );
 });
 
-test("invalid JSON fails closed without writing or partial dispatch", () => {
-    const backend = createBackend('{"DP-1":{"TopLeft":');
+test("O: timer start failure fails safe and leaves no active cooldown", () => {
+    const backend = createBackend({
+        config: makeTimerGateConfig(),
+        qtimerOptions: {perTimer: [{startThrows: true}, {startThrows: true}]},
+    });
+    backend.workspace.cursorPos = {x: 3500, y: 10};
+    const trigger = callbackFor(backend, "ElectricTopRight");
 
-    backend.callbacks.get(ELECTRIC_BORDERS.ElectricTopLeft)();
+    trigger();
+    trigger();
 
-    assert.deepEqual(backend.dbusCalls, []);
-    assert.deepEqual(backend.writes, []);
+    assert.equal(backend.dbusCalls.length, 0);
+    assert.equal(backend.timers.length, 2);
+    assert.equal(activeTimerCount(backend.timers), 0);
+});
+
+test("P: timeout connect failure fails safe and leaves no cooldown", () => {
+    const backend = createBackend({
+        config: makeTimerGateConfig(),
+        qtimerOptions: {perTimer: [{connectThrows: true}]},
+    });
+    backend.workspace.cursorPos = {x: 3500, y: 10};
+
+    callbackFor(backend, "ElectricTopRight")();
+
+    assert.equal(backend.dbusCalls.length, 0);
+    assert.equal(activeTimerCount(backend.timers), 0);
     assert.equal(
-        backend.prints.some(args => args.join(" ").includes("failed to load config")),
+        backend.prints.some(args => args.join(" ").includes("failed to start cooldown timer")),
         true,
     );
 });
 
-test("invalid known binding is removed and cannot dispatch", () => {
-    const invalidConfig = structuredClone(v2Config);
-    invalidConfig.monitors["DP-1"].TopLeft.action.name = "";
-    const backend = createBackend(invalidConfig);
-    const config = plain(backend.context.loadRuntimeConfig());
+test("Q: at most one active cooldown entry exists per output and position", () => {
+    const backend = createBackend({config: makeTimerGateConfig()});
+    backend.workspace.cursorPos = {x: 3500, y: 10};
+    const trigger = callbackFor(backend, "ElectricTopRight");
 
-    backend.callbacks.get(ELECTRIC_BORDERS.ElectricTopLeft)();
+    trigger();
+    trigger();
+    trigger();
 
-    assert.equal(Object.hasOwn(config.monitors["DP-1"], "TopLeft"), false);
-    assert.deepEqual(backend.dbusCalls, []);
+    assert.equal(backend.timers.length, 1);
+    assert.equal(activeTimerCount(backend.timers), 1);
+
+    backend.timers[0].fireTimeout();
+    trigger();
+
+    assert.equal(activeTimerCount(backend.timers), 1);
 });
 
-test("unknown v0.2 fields do not affect known shortcut dispatch", () => {
-    const backend = createBackend(extensionConfig);
+test("R: separator-like names are collision-safe for cooldown identity", () => {
+    const config = {
+        schemaVersion: 2,
+        monitors: {
+            "a:b": {
+                TopLeft: {
+                    action: {type: "shortcut", component: "kwin", name: "Overview"},
+                    cooldownMs: 350,
+                },
+            },
+            a: {
+                TopLeft: {
+                    action: {type: "shortcut", component: "kwin", name: "Overview"},
+                    cooldownMs: 350,
+                },
+            },
+        },
+    };
+    const backend = createBackend({config});
+    backend.workspace.screens = [
+        {name: "a:b", geometry: {x: 0, y: 0, width: 100, height: 100}},
+        {name: "a", geometry: {x: 100, y: 0, width: 100, height: 100}},
+    ];
 
-    backend.callbacks.get(ELECTRIC_BORDERS.ElectricTopLeft)();
+    const trigger = callbackFor(backend, "ElectricTopLeft");
+    backend.workspace.cursorPos = {x: 10, y: 10};
+    trigger();
+    backend.workspace.cursorPos = {x: 110, y: 10};
+    trigger();
 
-    assert.equal(backend.dbusCalls.length, 1);
-    assert.equal(backend.dbusCalls[0][4], "Overview");
+    assert.equal(backend.dbusCalls.length, 2);
+    assert.equal(backend.timers.length, 2);
 });
 
 test("runtime normalization and dispatch do not mutate input fixtures", () => {
     const input = structuredClone(extensionConfig);
     const original = structuredClone(input);
-    const backend = createBackend(input);
+    const backend = createBackend({config: input});
 
-    backend.callbacks.get(ELECTRIC_BORDERS.ElectricTopLeft)();
+    callbackFor(backend, "ElectricTopLeft")();
     backend.context.loadRuntimeConfig();
 
     assert.deepEqual(input, original);

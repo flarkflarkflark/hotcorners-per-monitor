@@ -208,13 +208,113 @@ function normalizeConfigToV2(config) {
 }
 
 let runtimeConfig = {schemaVersion: SCHEMA_VERSION, monitors: {}};
+let cooldownTimers = [];
 
 function loadRuntimeConfig() {
     const raw = readConfig("MonitorConfigs", "{}");
     return normalizeConfigToV2(JSON.parse(raw));
 }
 
+function stopTimer(timer) {
+    if (!timer) return;
+    try {
+        if (typeof timer.stop === "function") {
+            timer.stop();
+        }
+    } catch (_) {
+        // best-effort cleanup only
+    }
+}
+
+function clearAllCooldownTimers() {
+    for (let i = 0; i < cooldownTimers.length; i++) {
+        stopTimer(cooldownTimers[i].timer);
+    }
+    cooldownTimers = [];
+}
+
+function findCooldownTimerIndex(outputName, position) {
+    for (let i = 0; i < cooldownTimers.length; i++) {
+        const entry = cooldownTimers[i];
+        if (entry.outputName === outputName && entry.position === position) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+function removeCooldownTimer(outputName, position, timer) {
+    for (let i = 0; i < cooldownTimers.length; i++) {
+        const entry = cooldownTimers[i];
+        if (entry.outputName !== outputName || entry.position !== position) {
+            continue;
+        }
+        if (timer && entry.timer !== timer) {
+            continue;
+        }
+        cooldownTimers.splice(i, 1);
+        return;
+    }
+}
+
+function isTimerActive(timer) {
+    if (!timer) return false;
+    if (typeof timer.isActive === "function") {
+        return !!timer.isActive();
+    }
+    return !!timer.active;
+}
+
+function isCooldownActive(outputName, position) {
+    const index = findCooldownTimerIndex(outputName, position);
+    if (index === -1) return false;
+    const timer = cooldownTimers[index].timer;
+    if (isTimerActive(timer)) {
+        return true;
+    }
+    cooldownTimers.splice(index, 1);
+    return false;
+}
+
+function beginCooldown(outputName, position, cooldownMs) {
+    let timer;
+    try {
+        timer = new QTimer();
+
+        if (typeof timer.setSingleShot === "function") {
+            timer.setSingleShot(true);
+        } else {
+            timer.singleShot = true;
+        }
+
+        if (typeof timer.setTimerType === "function") {
+            timer.setTimerType(0);
+        } else {
+            timer.timerType = 0;
+        }
+
+        timer.timeout.connect(function() {
+            removeCooldownTimer(outputName, position, timer);
+        });
+
+        timer.start(cooldownMs);
+
+        if (!isTimerActive(timer)) {
+            throw new Error("timer is not active after start");
+        }
+    } catch (e) {
+        stopTimer(timer);
+        print("hotcorners-per-monitor: failed to start cooldown timer:", e);
+        return false;
+    }
+
+    removeCooldownTimer(outputName, position);
+    cooldownTimers.push({outputName, position, timer});
+    return true;
+}
+
 function loadConfig() {
+    clearAllCooldownTimers();
     try {
         runtimeConfig = loadRuntimeConfig();
         print("hotcorners-per-monitor: config loaded for outputs:",
@@ -223,6 +323,10 @@ function loadConfig() {
         print("hotcorners-per-monitor: failed to load config:", e);
         runtimeConfig = {schemaVersion: SCHEMA_VERSION, monitors: {}};
     }
+}
+
+function cleanupRuntime() {
+    clearAllCooldownTimers();
 }
 
 function getScreenAtCursor() {
@@ -238,36 +342,59 @@ function getScreenAtCursor() {
     return null;
 }
 
+function isDispatchableAction(action) {
+    return !!action &&
+           action.type === "shortcut" &&
+           typeof action.component === "string" &&
+           action.component &&
+           typeof action.name === "string" &&
+           action.name;
+}
+
 function executeAction(action) {
-    if (!action || !action.type || action.type === "none") {
-        return;
-    }
-    if (action.type === "shortcut") {
-        const component = action.component || "kwin";
-        const name = action.name;
-        if (!name) return;
-        callDBus(
-            "org.kde.kglobalaccel",
-            "/component/" + component,
-            "org.kde.kglobalaccel.Component",
-            "invokeShortcut",
-            name
-        );
-        return;
-    }
-    print("hotcorners-per-monitor: unknown action type:", action.type);
+    const component = action.component;
+    const name = action.name;
+    callDBus(
+        "org.kde.kglobalaccel",
+        "/component/" + component,
+        "org.kde.kglobalaccel.Component",
+        "invokeShortcut",
+        name
+    );
 }
 
 function handleCorner(positionName) {
     const screen = getScreenAtCursor();
     if (!screen) return;
-    const screenName = screen.name;
-    if (!screenName) return;
-    const screenConfig = runtimeConfig.monitors[screenName];
-    if (!screenConfig) return;
-    const binding = screenConfig[positionName];
-    if (!binding) return;
-    executeAction(binding.action);
+    const outputName = screen.name;
+    if (!outputName) return;
+
+    const monitor = runtimeConfig.monitors[outputName];
+    if (!monitor) return;
+
+    const binding = monitor[positionName];
+    if (!binding || !isObject(binding)) return;
+
+    const action = binding.action;
+    if (!isDispatchableAction(action)) return;
+
+    const cooldownMs = binding.cooldownMs;
+    if (!validCooldown(cooldownMs)) return;
+
+    if (cooldownMs > 0) {
+        if (isCooldownActive(outputName, positionName)) {
+            return;
+        }
+        if (!beginCooldown(outputName, positionName, cooldownMs)) {
+            return;
+        }
+    }
+
+    try {
+        executeAction(action);
+    } catch (e) {
+        print("hotcorners-per-monitor: failed to invoke shortcut:", e);
+    }
 }
 
 // Bootstrap: load config + register all 8 corners/edges

@@ -16,7 +16,8 @@
 - [x] Add invalid/stale configuration protection and unknown-field preservation.
 - [x] Normalize v0.1/v0.2 configuration in the KWin runtime.
 - [x] Add per-binding cooldown with fake-clock tests.
-- [ ] Complete Plasma 6.4 Wayland/X11 QTimer capability gates (6.7 Wayland smoke passes).
+- [x] Complete Plasma 6.4 Wayland/X11 QTimer capability gates (6.7 Wayland smoke passes).
+- [x] Apply timer-backed cooldown gating in KWin runtime.
 - [ ] Add specified session-D-Bus command runner without implicit shell.
 - [ ] Install/remove the helper and D-Bus metadata through an ownership manifest.
 - [ ] Add command/cooldown PyQt controls and fix installed gettext lookup.
