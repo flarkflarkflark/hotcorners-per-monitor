@@ -8,6 +8,7 @@
 - [x] Record architecture, normative schema, specification and impact analysis.
 - [x] Run adversarial Codex review and reconcile all 21 findings.
 - [ ] Human approves defaults, stay-zone, context inheritance, command-helper design and hard platform gates.
+- [ ] Document v3 default-context fallback semantics and examples.
 
 ## v0.2.0
 

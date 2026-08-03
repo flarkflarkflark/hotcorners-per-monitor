@@ -120,11 +120,174 @@ Context rules:
 - Other context keys and their IDs must agree with their fields.
 - Resolution occurs independently for each output and position.
 - Precedence is combined activity+desktop, activity, desktop, default.
-- The first context that contains the output/position binding wins.
+- Within the ordered context precedence, the first context that contains the output/position binding wins.
 - An explicit binding whose `tap` is `none` wins and blocks fallback.
-- A missing binding falls through to the next context.
+- A missing binding in the requested context may fall through to `contexts.default` at the same output and position.
 - Missing/removed activities and desktops remain stored but are not selected at runtime.
 - Desktop selection is for the output where the edge activation occurred, not necessarily the active output.
+
+### Context fallback semantics
+
+`contexts` is a map keyed by stable string context IDs. `default` is reserved and is the only fallback context.
+
+For a non-default requested context, resolution is evaluated for the same output name and position in this order:
+
+1. the requested context binding, if present and valid;
+2. `contexts.default` at the same output name and position, if present and valid;
+3. no action.
+
+For the `default` context itself, resolve only `contexts.default`; do not recurse or chain through other contexts.
+
+Rules:
+
+- Explicit `none` is authoritative and stops lookup immediately.
+- Omission is not the same as explicit `none`; only omission may inherit from `contexts.default`.
+- Missing output, missing position, or missing binding in the requested context may inherit from `contexts.default` at the same output and position.
+- Never inherit from another output, another position, or another non-default context.
+- A missing `contexts.default` entry means no fallback.
+- Malformed actions are invalid and are excluded from resolution; they are not the same as explicit `none`.
+- Unknown extension fields do not affect resolution and are preserved by normalization and persistence.
+
+Examples:
+
+Exact override:
+
+```json
+{
+  "schemaVersion": 3,
+  "contexts": {
+    "default": {
+      "kind": "default",
+      "monitors": {
+        "DP-1": {
+          "TopLeft": {"tap": {"type":"shortcut","component":"kwin","name":"Overview"}}
+        }
+      }
+    },
+    "activity:work": {
+      "kind": "activity",
+      "activityId": "work",
+      "monitors": {
+        "DP-1": {
+          "TopLeft": {"tap": {"type":"shortcut","component":"kwin","name":"Show Desktop"}}
+        }
+      }
+    }
+  }
+}
+```
+
+Result: the `activity:work` shortcut.
+
+Omission inherits:
+
+```json
+{
+  "schemaVersion": 3,
+  "contexts": {
+    "default": {
+      "kind": "default",
+      "monitors": {
+        "DP-1": {
+          "TopLeft": {"tap": {"type":"shortcut","component":"kwin","name":"Overview"}}
+        }
+      }
+    },
+    "activity:work": {
+      "kind": "activity",
+      "activityId": "work",
+      "monitors": {
+        "DP-1": {
+          "TopRight": {"tap": {"type":"shortcut","component":"kwin","name":"Show Desktop"}}
+        }
+      }
+    }
+  }
+}
+```
+
+Result: `contexts.default.monitors["DP-1"].TopLeft`.
+
+Explicit none blocks:
+
+```json
+{
+  "schemaVersion": 3,
+  "contexts": {
+    "default": {
+      "kind": "default",
+      "monitors": {
+        "DP-1": {
+          "TopLeft": {"tap": {"type":"shortcut","component":"kwin","name":"Overview"}}
+        }
+      }
+    },
+    "activity:work": {
+      "kind": "activity",
+      "activityId": "work",
+      "monitors": {
+        "DP-1": {
+          "TopLeft": {"tap": {"type":"none"}}
+        }
+      }
+    }
+  }
+}
+```
+
+Result: none.
+
+Position isolation:
+
+```json
+{
+  "schemaVersion": 3,
+  "contexts": {
+    "default": {
+      "kind": "default",
+      "monitors": {
+        "DP-1": {
+          "TopRight": {"tap": {"type":"shortcut","component":"kwin","name":"Overview"}}
+        }
+      }
+    },
+    "activity:work": {
+      "kind": "activity",
+      "activityId": "work",
+      "monitors": {}
+    }
+  }
+}
+```
+
+Result: no action for `DP-1` / `TopLeft`.
+
+Output isolation:
+
+```json
+{
+  "schemaVersion": 3,
+  "contexts": {
+    "default": {
+      "kind": "default",
+      "monitors": {
+        "DP-1": {
+          "TopLeft": {"tap": {"type":"shortcut","component":"kwin","name":"Overview"}}
+        }
+      }
+    },
+    "activity:work": {
+      "kind": "activity",
+      "activityId": "work",
+      "monitors": {
+        "HDMI-A-1": {}
+      }
+    }
+  }
+}
+```
+
+Result: no action for `HDMI-A-1` / `TopLeft`.
 
 ## Validation and forward compatibility
 

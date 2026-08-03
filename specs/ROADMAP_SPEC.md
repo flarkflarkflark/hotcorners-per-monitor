@@ -49,7 +49,7 @@ Key decisions:
 
 - New bindings default to a proposed 350 ms cooldown; migrated v0.1 bindings receive 0 ms to preserve behavior.
 - New linger bindings default to a proposed 500 ms threshold and proposed 8-logical-pixel stay zone.
-- Context fallback is per output/position binding. Explicit `none` blocks fallback; omission inherits.
+- `contexts.default` is the only fallback context. Explicit `none` blocks fallback; omission inherits from the same output and position.
 - Desktop context is resolved for the output that activated the edge, not simply the active output.
 - Overlapping/cloned output geometries are ambiguous and fail closed.
 - Tap/linger dispatches at most one eligible action; cooldown or invalid/no-action values may produce zero.
