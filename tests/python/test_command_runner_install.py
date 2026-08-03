@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import textwrap
 import unittest
+import sys
 from pathlib import Path
 
 
@@ -76,7 +77,7 @@ class CommandRunnerInstallTests(unittest.TestCase):
             "exit 0\n",
         )
 
-    def _run(self, command, env=None, check=True):
+    def _run(self, command, env=None, check=True, timeout=None):
         return subprocess.run(
             command,
             cwd=ROOT,
@@ -84,10 +85,16 @@ class CommandRunnerInstallTests(unittest.TestCase):
             check=check,
             capture_output=True,
             text=True,
+            timeout=timeout,
         )
 
-    def _install(self, env=None, check=True):
-        return self._run(["bash", str(SETUP), "--yes", "--no-launch", "--keep-defaults"], env=env, check=check)
+    def _install(self, env=None, check=True, timeout=None):
+        return self._run(
+            ["bash", str(SETUP), "--yes", "--no-launch", "--keep-defaults"],
+            env=env,
+            check=check,
+            timeout=timeout,
+        )
 
     def _uninstall(self, env=None, check=True):
         return self._run(["bash", str(UNINSTALL), "--yes"], env=env, check=check)
@@ -143,8 +150,9 @@ class CommandRunnerInstallTests(unittest.TestCase):
         self.assertIn("Name=org.flark.HotCorners.CommandRunner", service.read_text())
 
     def test_dependency_failure_stops_before_helper_install(self):
-        real_python = shutil.which("python3")
-        self.assertIsNotNone(real_python)
+        real_python = os.path.realpath(sys.executable)
+        self.assertTrue(real_python)
+        self.assertTrue(Path(real_python).exists())
         self._write_exe(
             self.fakebin / "python3",
             textwrap.dedent(
@@ -158,7 +166,7 @@ class CommandRunnerInstallTests(unittest.TestCase):
             ),
         )
 
-        run = self._install(env=self._base_env(), check=False)
+        run = self._install(env=self._base_env(), check=False, timeout=5)
         self.assertNotEqual(run.returncode, 0)
         self.assertIn("missing: PyQt6.QtDBus", run.stdout + run.stderr)
         self.assertFalse(self._helper_path().exists())
