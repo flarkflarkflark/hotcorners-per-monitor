@@ -8,6 +8,7 @@ from copy import deepcopy
 
 
 SCHEMA_VERSION = 2
+SCHEMA_VERSION_V3 = 3
 DEFAULT_COOLDOWN_MS = 350
 LEGACY_COOLDOWN_MS = 0
 MAX_COOLDOWN_MS = 10_000
@@ -15,6 +16,7 @@ MAX_COMMAND_PROGRAM_BYTES = 4096
 MAX_COMMAND_ARGUMENTS = 128
 MAX_COMMAND_ARGUMENT_BYTES = 16 * 1024
 MAX_COMMAND_TOTAL_ARGUMENT_BYTES = 128 * 1024
+CONTEXT_KINDS = frozenset({"default", "activity", "desktop", "activityDesktop"})
 POSITIONS = frozenset({
     "TopLeft",
     "Top",
@@ -91,6 +93,49 @@ def build_command_action(program, arguments):
         "program": program,
         "arguments": deepcopy(arguments),
     }
+
+
+def normalize_action(action):
+    return _normalize_action(action)
+
+
+def _valid_context_id(value):
+    return isinstance(value, str) and bool(value) and "\x00" not in value
+
+
+def validate_context_metadata(kind, activity_id=None, desktop_id=None):
+    if kind not in CONTEXT_KINDS:
+        return False, "invalid-context"
+    if kind == "default":
+        if activity_id is not None or desktop_id is not None:
+            return False, "invalid-context"
+        return True, ""
+    if kind == "activity":
+        if _valid_context_id(activity_id) and desktop_id is None:
+            return True, ""
+        return False, "invalid-context"
+    if kind == "desktop":
+        if _valid_context_id(desktop_id) and activity_id is None:
+            return True, ""
+        return False, "invalid-context"
+    if kind == "activityDesktop":
+        if _valid_context_id(activity_id) and _valid_context_id(desktop_id):
+            return True, ""
+        return False, "invalid-context"
+    return False, "invalid-context"
+
+
+def build_context_key(kind, activity_id=None, desktop_id=None):
+    ok, error = validate_context_metadata(kind, activity_id, desktop_id)
+    if not ok:
+        raise InvalidConfig(error)
+    if kind == "default":
+        return "default"
+    if kind == "activity":
+        return f"activity:{activity_id}"
+    if kind == "desktop":
+        return f"desktop:{desktop_id}"
+    return f"activity:{activity_id}|desktop:{desktop_id}"
 
 
 def _normalize_action(action):
@@ -229,4 +274,30 @@ def normalize_config_to_v2(config):
     normalized["monitors"] = _normalize_monitors(
         config.get("monitors"), legacy=False
     )
+    return normalized
+
+
+def normalize_config_to_v3(config):
+    if not _is_object(config):
+        raise InvalidConfig("configuration root must be an object")
+
+    if "schemaVersion" not in config:
+        raise UnsupportedSchemaVersion("missing schemaVersion for v3 document")
+
+    if config.get("schemaVersion") != SCHEMA_VERSION_V3:
+        raise UnsupportedSchemaVersion(
+            f"unsupported schema version: {config.get('schemaVersion')!r}"
+        )
+
+    contexts = config.get("contexts")
+    if not _is_object(contexts):
+        raise InvalidConfig("contexts must be an object")
+
+    default_context = contexts.get("default")
+    if not _is_object(default_context) or default_context.get("kind") != "default":
+        raise InvalidConfig("default context must exist")
+
+    normalized = deepcopy(config)
+    normalized["schemaVersion"] = SCHEMA_VERSION_V3
+    normalized["contexts"] = deepcopy(contexts)
     return normalized

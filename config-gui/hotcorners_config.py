@@ -10,6 +10,7 @@ a KWin reconfigure so changes take effect immediately.
 """
 
 import gettext
+import copy
 import json
 import locale
 import os
@@ -23,20 +24,24 @@ from config_schema import (
     DEFAULT_COOLDOWN_MS,
     MAX_COOLDOWN_MS,
     InvalidConfig,
+    build_context_key,
     build_command_action,
     create_v2_binding,
     normalize_config_to_v2,
+    normalize_config_to_v3,
+    normalize_action,
     normalize_cooldown_ms,
     validate_command_arguments,
     validate_command_program,
     validate_cooldown_ms,
+    validate_context_metadata,
 )
 from PyQt6.QtCore import Qt, QSize, QRect, pyqtSignal
 from PyQt6.QtGui import (
     QGuiApplication, QPainter, QPen, QBrush, QColor, QPalette, QFont,
 )
 from PyQt6.QtWidgets import (
-    QApplication, QComboBox, QDialogButtonBox, QFormLayout,
+    QApplication, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
     QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QMainWindow, QMessageBox, QPushButton, QSizePolicy, QSpinBox,
     QVBoxLayout, QWidget, QInputDialog,
@@ -118,7 +123,11 @@ def load_config() -> LoadedConfig:
     try:
         raw = baseline.raw_value if baseline.key_exists else ""
         parsed = json.loads(raw) if raw else {}
-        document = normalize_config_to_v2(parsed)
+        schema_version = parsed.get("schemaVersion") if isinstance(parsed, dict) else None
+        if schema_version == 3:
+            document = normalize_config_to_v3(parsed)
+        else:
+            document = normalize_config_to_v2(parsed)
     except (json.JSONDecodeError, ValueError):
         document = None
     return LoadedConfig(document, baseline)
@@ -130,7 +139,10 @@ def save_config(
 ) -> ConfigBaseline | None:
     """Write v2 config only if its raw baseline is still current."""
     try:
-        normalized = normalize_config_to_v2(config)
+        if isinstance(config, dict) and config.get("schemaVersion") == 3:
+            normalized = normalize_config_to_v3(config)
+        else:
+            normalized = normalize_config_to_v2(config)
         payload = json.dumps(normalized, separators=(",", ":"))
         current = _read_config_baseline()
     except (ValueError, TypeError, FileNotFoundError):
@@ -219,12 +231,58 @@ _("Command arguments are invalid.")
 _("Cooldown")
 _("Minimum time before this hot zone can trigger again.")
 _("Invalid cooldown value.")
+_("Context")
+_("Default")
+_("Activity")
+_("Desktop")
+_("Activity + Desktop")
+_("Add Context")
+_("Edit Context")
+_("Remove Context")
+_("Inherit from Default")
+_("Activity ID")
+_("Desktop ID")
+_("A context with this identifier already exists.")
+_("The default context cannot be removed.")
+_("Remove this context?")
+_("Invalid context identifier.")
 
 def position_label(pos_id: str) -> str:
     for pid, label in POSITION_LAYOUT:
         if pid == pos_id:
             return _(label)
     return pos_id
+
+
+def context_kind_label(kind: str) -> str:
+    labels = {
+        "default": _("Default"),
+        "activity": _("Activity"),
+        "desktop": _("Desktop"),
+        "activityDesktop": _("Activity + Desktop"),
+    }
+    return labels.get(kind, kind)
+
+
+def context_display_label(context_key: str, context: dict | None) -> str:
+    if not isinstance(context, dict):
+        return context_key
+    kind = context.get("kind")
+    if kind == "default":
+        return _("Default")
+    if kind == "activity":
+        activity_id = context.get("activityId", "")
+        return _("Activity: {activity_id}").format(activity_id=activity_id)
+    if kind == "desktop":
+        desktop_id = context.get("desktopId", "")
+        return _("Desktop: {desktop_id}").format(desktop_id=desktop_id)
+    if kind == "activityDesktop":
+        activity_id = context.get("activityId", "")
+        desktop_id = context.get("desktopId", "")
+        return _(
+            "Activity + Desktop: {activity_id} / {desktop_id}"
+        ).format(activity_id=activity_id, desktop_id=desktop_id)
+    return context_key
 
 NONE_ACTION = {"type": "none"}
 DEFAULT_SHORTCUT_ACTION = {
@@ -282,6 +340,198 @@ def _command_action_from_editor(program: str, arguments: list[str], preserved: d
     canonical = build_command_action(program, arguments)
     return _merge_action_extensions(preserved, canonical)
 
+
+V3_BINDING_INHERIT = "inherit"
+V3_BINDING_NONE = "none"
+V3_BINDING_LOCAL = "local"
+
+
+def is_v3_document(config: dict | None) -> bool:
+    return (
+        isinstance(config, dict)
+        and config.get("schemaVersion") == 3
+        and isinstance(config.get("contexts"), dict)
+    )
+
+
+def ordered_context_keys(contexts: dict) -> list[str]:
+    keys = list(contexts.keys())
+    if "default" in contexts:
+        keys = ["default"] + [key for key in keys if key != "default"]
+    return keys
+
+
+def get_context_entry(config: dict, context_key: str) -> dict | None:
+    contexts = config.get("contexts", {})
+    if not isinstance(contexts, dict):
+        return None
+    entry = contexts.get(context_key)
+    return entry if isinstance(entry, dict) else None
+
+
+def get_context_monitors(config: dict, context_key: str, *, create: bool = False) -> dict | None:
+    contexts = config.setdefault("contexts", {})
+    entry = contexts.get(context_key)
+    if not isinstance(entry, dict):
+        if not create:
+            return None
+        entry = {"kind": "default" if context_key == "default" else "activity", "monitors": {}}
+        contexts[context_key] = entry
+    monitors = entry.get("monitors")
+    if isinstance(monitors, dict):
+        return monitors
+    if not create:
+        return None
+    entry["monitors"] = {}
+    return entry["monitors"]
+
+
+def get_context_binding(config: dict, context_key: str, monitor_name: str, position_id: str) -> dict | None:
+    contexts = config.get("contexts", {})
+    if not isinstance(contexts, dict):
+        return None
+    context = contexts.get(context_key)
+    if not isinstance(context, dict):
+        return None
+    monitors = context.get("monitors", {})
+    if not isinstance(monitors, dict):
+        return None
+    monitor = monitors.get(monitor_name, {})
+    if not isinstance(monitor, dict):
+        return None
+    binding = monitor.get(position_id)
+    return binding if isinstance(binding, dict) else None
+
+
+def get_default_v3_binding(config: dict, monitor_name: str, position_id: str) -> dict | None:
+    return get_context_binding(config, "default", monitor_name, position_id)
+
+
+def create_v3_binding(tap: dict, cooldown_ms: int = DEFAULT_COOLDOWN_MS, preserved: dict | None = None) -> dict:
+    normalized_tap = normalize_action(tap)
+    if normalized_tap is None:
+        raise InvalidConfig("invalid action")
+    if not validate_cooldown_ms(cooldown_ms)[0]:
+        raise InvalidConfig("invalid cooldownMs")
+
+    binding = copy.deepcopy(preserved) if isinstance(preserved, dict) else {}
+    binding["tap"] = normalized_tap
+    binding["cooldownMs"] = int(cooldown_ms)
+    return binding
+
+
+def remove_v3_binding(config: dict, context_key: str, monitor_name: str, position_id: str) -> None:
+    contexts = config.get("contexts", {})
+    if not isinstance(contexts, dict):
+        return
+    context = contexts.get(context_key)
+    if not isinstance(context, dict):
+        return
+    monitors = context.get("monitors")
+    if not isinstance(monitors, dict):
+        return
+    monitor = monitors.get(monitor_name)
+    if not isinstance(monitor, dict):
+        return
+    monitor.pop(position_id, None)
+    if not monitor:
+        monitors.pop(monitor_name, None)
+
+
+def set_v3_binding(config: dict, context_key: str, monitor_name: str, position_id: str, binding: dict) -> None:
+    monitors = get_context_monitors(config, context_key, create=True)
+    if monitors is None:
+        return
+    monitor = monitors.setdefault(monitor_name, {})
+    if not isinstance(monitor, dict):
+        monitor = {}
+        monitors[monitor_name] = monitor
+    monitor[position_id] = copy.deepcopy(binding)
+
+
+def determine_v3_binding_state(config: dict, context_key: str, monitor_name: str, position_id: str) -> str:
+    binding = get_context_binding(config, context_key, monitor_name, position_id)
+    if not isinstance(binding, dict):
+        return V3_BINDING_INHERIT if context_key != "default" else V3_BINDING_NONE
+    tap = binding.get("tap")
+    if not isinstance(tap, dict):
+        return V3_BINDING_INHERIT if context_key != "default" else V3_BINDING_NONE
+    action_type = tap.get("type")
+    if action_type == "none":
+        return V3_BINDING_NONE
+    if action_type in {"shortcut", "command"}:
+        return action_type
+    return V3_BINDING_INHERIT if context_key != "default" else V3_BINDING_NONE
+
+
+def effective_v3_binding(config: dict, context_key: str, monitor_name: str, position_id: str) -> dict | None:
+    binding = get_context_binding(config, context_key, monitor_name, position_id)
+    if isinstance(binding, dict):
+        tap = binding.get("tap")
+        if isinstance(tap, dict) and tap.get("type") in {"none", "shortcut", "command"}:
+            return binding
+    if context_key != "default":
+        fallback = get_default_v3_binding(config, monitor_name, position_id)
+        if isinstance(fallback, dict):
+            tap = fallback.get("tap")
+            if isinstance(tap, dict) and tap.get("type") in {"none", "shortcut", "command"}:
+                return fallback
+    return None
+
+
+def build_context_entry(kind: str, activity_id: str | None = None, desktop_id: str | None = None, preserved: dict | None = None) -> tuple[str, dict]:
+    key = build_context_key(kind, activity_id, desktop_id)
+    entry = copy.deepcopy(preserved) if isinstance(preserved, dict) else {}
+    entry["kind"] = kind
+    if kind == "default":
+        entry.pop("activityId", None)
+        entry.pop("desktopId", None)
+    elif kind == "activity":
+        entry["activityId"] = activity_id
+        entry.pop("desktopId", None)
+    elif kind == "desktop":
+        entry["desktopId"] = desktop_id
+        entry.pop("activityId", None)
+    elif kind == "activityDesktop":
+        entry["activityId"] = activity_id
+        entry["desktopId"] = desktop_id
+
+    monitors = entry.get("monitors")
+    if not isinstance(monitors, dict):
+        entry["monitors"] = {}
+    return key, entry
+
+
+def set_context_entry(config: dict, old_key: str | None, new_key: str, entry: dict) -> None:
+    contexts = config.setdefault("contexts", {})
+    if old_key == new_key:
+        contexts[new_key] = copy.deepcopy(entry)
+        return
+
+    ordered = []
+    inserted = False
+    for key, value in contexts.items():
+        if key == old_key:
+            ordered.append((new_key, copy.deepcopy(entry)))
+            inserted = True
+        elif key != new_key:
+            ordered.append((key, value))
+    if not inserted:
+        if new_key not in contexts:
+            ordered.append((new_key, copy.deepcopy(entry)))
+        else:
+            raise InvalidConfig("context key collision")
+
+    contexts.clear()
+    contexts.update(ordered)
+
+
+def remove_context_entry(config: dict, context_key: str) -> None:
+    contexts = config.get("contexts", {})
+    if not isinstance(contexts, dict):
+        return
+    contexts.pop(context_key, None)
+
 # -----------------------------------------------------------------------------
 # Monitor detection
 # -----------------------------------------------------------------------------
@@ -307,6 +557,73 @@ def display_name(monitor: dict) -> str:
         parts.append(monitor["manufacturer"])
     parts.append(f"({monitor['name']})")
     return " ".join(parts)
+
+
+# -----------------------------------------------------------------------------
+# Context dialog — add/edit v3 context metadata
+# -----------------------------------------------------------------------------
+class ContextDialog(QDialog):
+    def __init__(self, parent=None, *, kind="activity", activity_id="", desktop_id=""):
+        super().__init__(parent)
+        self.setWindowTitle(_("Context"))
+        self._build_ui()
+        self.set_context(kind, activity_id, desktop_id)
+
+    def _build_ui(self):
+        layout = QFormLayout(self)
+        layout.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
+        )
+
+        self.kind_combo = QComboBox()
+        self.kind_combo.addItem(_("Activity"), "activity")
+        self.kind_combo.addItem(_("Desktop"), "desktop")
+        self.kind_combo.addItem(_("Activity + Desktop"), "activityDesktop")
+        self.kind_combo.currentIndexChanged.connect(self._update_visibility)
+        layout.addRow(_("Context"), self.kind_combo)
+
+        self.activity_id_edit = QLineEdit()
+        self.activity_id_edit.setPlaceholderText(_("Activity ID"))
+        layout.addRow(_("Activity ID"), self.activity_id_edit)
+        self.activity_id_label = layout.labelForField(self.activity_id_edit)
+
+        self.desktop_id_edit = QLineEdit()
+        self.desktop_id_edit.setPlaceholderText(_("Desktop ID"))
+        layout.addRow(_("Desktop ID"), self.desktop_id_edit)
+        self.desktop_id_label = layout.labelForField(self.desktop_id_edit)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+
+    def _update_visibility(self):
+        kind = self.kind_combo.currentData() or "activity"
+        show_activity = kind in {"activity", "activityDesktop"}
+        show_desktop = kind in {"desktop", "activityDesktop"}
+        self.activity_id_edit.setVisible(show_activity)
+        self.activity_id_label.setVisible(show_activity)
+        self.desktop_id_edit.setVisible(show_desktop)
+        self.desktop_id_label.setVisible(show_desktop)
+
+    def set_context(self, kind: str, activity_id: str = "", desktop_id: str = ""):
+        idx = self.kind_combo.findData(kind)
+        if idx >= 0:
+            self.kind_combo.setCurrentIndex(idx)
+        self.activity_id_edit.setText(activity_id or "")
+        self.desktop_id_edit.setText(desktop_id or "")
+        self._update_visibility()
+
+    def context_kind(self):
+        return self.kind_combo.currentData() or "activity"
+
+    def activity_id(self):
+        return self.activity_id_edit.text()
+
+    def desktop_id(self):
+        return self.desktop_id_edit.text()
 
 # -----------------------------------------------------------------------------
 # Visual canvas: monitor arrangement with clickable handles
@@ -865,12 +1182,19 @@ class MainWindow(QMainWindow):
         self.config_baseline = loaded_config.baseline
         self.config_valid = loaded_config.document is not None
         self.config = loaded_config.document or normalize_config_to_v2({})
+        self.is_v3 = is_v3_document(self.config)
         self.current_selection = None  # (monitor_name, pos_id)
+        self.active_context_key = "default" if self.is_v3 else None
+        self._local_binding_drafts = {}
         self._suppress_binding_signals = False
+        self._suppress_context_signals = False
         self._build_ui()
         # Pre-select first corner so editor has something to show
         if self.monitors:
             self.canvas.select_first()
+        if self.is_v3:
+            self._refresh_context_selector()
+            self._select_context("default", reload_binding=False)
 
     def _build_ui(self):
         central = QWidget()
@@ -912,6 +1236,33 @@ class MainWindow(QMainWindow):
         self.editor_box = QGroupBox(_("Select a corner above"))
         editor_layout = QVBoxLayout(self.editor_box)
         editor_layout.setContentsMargins(12, 12, 12, 12)
+
+        if self.is_v3:
+            context_row = QHBoxLayout()
+            self.context_combo = QComboBox()
+            self.context_combo.currentIndexChanged.connect(self._on_context_combo_changed)
+            context_row.addWidget(self.context_combo, 1)
+
+            self.add_context_btn = QPushButton(_("Add Context"))
+            self.edit_context_btn = QPushButton(_("Edit Context"))
+            self.remove_context_btn = QPushButton(_("Remove Context"))
+            self.add_context_btn.clicked.connect(self._on_add_context)
+            self.edit_context_btn.clicked.connect(self._on_edit_context)
+            self.remove_context_btn.clicked.connect(self._on_remove_context)
+            context_row.addWidget(self.add_context_btn)
+            context_row.addWidget(self.edit_context_btn)
+            context_row.addWidget(self.remove_context_btn)
+            editor_layout.addLayout(context_row)
+
+            self.binding_state_combo = QComboBox()
+            self.binding_state_combo.currentIndexChanged.connect(self._on_binding_state_changed)
+            editor_layout.addWidget(self.binding_state_combo)
+        else:
+            self.context_combo = None
+            self.add_context_btn = None
+            self.edit_context_btn = None
+            self.remove_context_btn = None
+            self.binding_state_combo = None
 
         self.action_editor = ActionEditor(dict(NONE_ACTION))
         self.action_editor.actionChanged.connect(self._on_action_changed)
@@ -959,16 +1310,314 @@ class MainWindow(QMainWindow):
         bl.addWidget(buttons)
         outer.addWidget(button_wrap)
 
+    def _canvas_config(self):
+        if not self.is_v3:
+            return self.config
+        monitors = {}
+        context = get_context_entry(self.config, self.active_context_key)
+        if isinstance(context, dict):
+            monitors = context.get("monitors", {})
+            if not isinstance(monitors, dict):
+                monitors = {}
+        return {"monitors": monitors}
+
+    def _refresh_context_selector(self):
+        if not self.is_v3:
+            return
+        self._suppress_context_signals = True
+        self.context_combo.clear()
+        contexts = self.config.get("contexts", {})
+        for key in ordered_context_keys(contexts):
+            self.context_combo.addItem(
+                context_display_label(key, contexts.get(key)),
+                key,
+            )
+        if self.active_context_key is not None:
+            idx = self.context_combo.findData(self.active_context_key)
+            if idx >= 0:
+                self.context_combo.setCurrentIndex(idx)
+        self._suppress_context_signals = False
+        self._update_context_buttons()
+
+    def _update_context_buttons(self):
+        if not self.is_v3:
+            return
+        is_default = self.active_context_key == "default"
+        self.edit_context_btn.setEnabled(not is_default)
+        self.remove_context_btn.setEnabled(not is_default)
+
+    def _populate_binding_state_combo(self, state: str):
+        if not self.is_v3:
+            return
+        self._suppress_binding_signals = True
+        self.binding_state_combo.clear()
+        if self.active_context_key != "default":
+            self.binding_state_combo.addItem(_("Inherit from Default"), V3_BINDING_INHERIT)
+        self.binding_state_combo.addItem(_("No action"), V3_BINDING_NONE)
+        self.binding_state_combo.addItem(_("Trigger shortcut"), "shortcut")
+        self.binding_state_combo.addItem(_("Command"), "command")
+        idx = self.binding_state_combo.findData(state)
+        if idx >= 0:
+            self.binding_state_combo.setCurrentIndex(idx)
+        self._suppress_binding_signals = False
+
+    def _set_v3_controls_enabled(self, enabled: bool):
+        self.action_editor.setEnabled(enabled)
+        self.cooldown_spin.setEnabled(enabled)
+        self.edit_context_btn.setEnabled(enabled and self.active_context_key != "default")
+        self.remove_context_btn.setEnabled(enabled and self.active_context_key != "default")
+
+    def _active_context_kind(self) -> str:
+        if not self.is_v3:
+            return ""
+        entry = get_context_entry(self.config, self.active_context_key)
+        if not isinstance(entry, dict):
+            return ""
+        return entry.get("kind", "")
+
+    def _select_context(self, context_key: str, *, reload_binding: bool = True):
+        if not self.is_v3:
+            return
+        contexts = self.config.get("contexts", {})
+        if not isinstance(contexts, dict) or context_key not in contexts:
+            return
+        self.active_context_key = context_key
+        self._refresh_context_selector()
+        self.canvas.set_config(self._canvas_config())
+        self._update_context_buttons()
+        if reload_binding and self.current_selection:
+            mon, pos = self.current_selection
+            self._load_v3_binding(mon, pos)
+
+    def _on_context_combo_changed(self, index: int):
+        if self._suppress_context_signals or not self.is_v3:
+            return
+        context_key = self.context_combo.itemData(index)
+        if isinstance(context_key, str):
+            self._select_context(context_key)
+
+    def _on_binding_state_changed(self, index: int):
+        if self._suppress_binding_signals or not self.is_v3:
+            return
+        if not self.current_selection or not self.config_valid:
+            return
+
+        state = self.binding_state_combo.itemData(index)
+        if not isinstance(state, str):
+            return
+
+        monitor_name, position_id = self.current_selection
+        draft_key = (self.active_context_key, monitor_name, position_id)
+        existing = get_context_binding(self.config, self.active_context_key, monitor_name, position_id)
+
+        if state == V3_BINDING_INHERIT and self.active_context_key != "default":
+            if isinstance(existing, dict):
+                self._local_binding_drafts[draft_key] = copy.deepcopy(existing)
+            remove_v3_binding(self.config, self.active_context_key, monitor_name, position_id)
+            preview = get_default_v3_binding(self.config, monitor_name, position_id)
+            if not isinstance(preview, dict):
+                preview = {"tap": dict(NONE_ACTION), "cooldownMs": DEFAULT_COOLDOWN_MS}
+            self._suppress_binding_signals = True
+            self.action_editor.set_action(preview.get("tap", dict(NONE_ACTION)))
+            self.cooldown_spin.setValue(normalize_cooldown_ms(preview.get("cooldownMs", DEFAULT_COOLDOWN_MS), DEFAULT_COOLDOWN_MS))
+            self._suppress_binding_signals = False
+            self._set_v3_controls_enabled(False)
+            self.canvas.set_config(self._canvas_config())
+            return
+
+        draft = self._local_binding_drafts.get(draft_key)
+        if not isinstance(draft, dict):
+            draft = existing if isinstance(existing, dict) else None
+
+        if state == V3_BINDING_NONE:
+            tap = dict(NONE_ACTION)
+        elif state == "command":
+            tap = draft.get("tap") if isinstance(draft, dict) and draft.get("tap", {}).get("type") == "command" else dict(DEFAULT_COMMAND_ACTION)
+        else:
+            tap = draft.get("tap") if isinstance(draft, dict) and draft.get("tap", {}).get("type") == "shortcut" else dict(DEFAULT_SHORTCUT_ACTION)
+
+        cooldown_value = DEFAULT_COOLDOWN_MS
+        if isinstance(draft, dict):
+            cooldown_value = normalize_cooldown_ms(draft.get("cooldownMs", DEFAULT_COOLDOWN_MS), DEFAULT_COOLDOWN_MS)
+
+        try:
+            binding = create_v3_binding(tap, cooldown_value, draft)
+        except InvalidConfig:
+            binding = create_v3_binding(dict(NONE_ACTION), DEFAULT_COOLDOWN_MS, draft)
+        set_v3_binding(self.config, self.active_context_key, monitor_name, position_id, binding)
+        self._local_binding_drafts[draft_key] = copy.deepcopy(binding)
+        self._suppress_binding_signals = True
+        self.action_editor.set_action(binding.get("tap", dict(NONE_ACTION)))
+        self.cooldown_spin.setValue(binding.get("cooldownMs", DEFAULT_COOLDOWN_MS))
+        self._suppress_binding_signals = False
+        self._set_v3_controls_enabled(True)
+        self.canvas.set_config(self._canvas_config())
+
+    def _current_context_entry(self):
+        if not self.is_v3:
+            return None
+        return get_context_entry(self.config, self.active_context_key)
+
+    def _context_dialog_defaults(self):
+        entry = self._current_context_entry() or {}
+        return (
+            entry.get("kind", "activity"),
+            entry.get("activityId", ""),
+            entry.get("desktopId", ""),
+        )
+
+    def _refresh_context_after_edit(self, context_key: str):
+        if not self.is_v3:
+            return
+        self._refresh_context_selector()
+        self._select_context(context_key, reload_binding=True)
+
+    def _on_add_context(self):
+        if not self.is_v3 or not self.config_valid:
+            return
+
+        dialog = ContextDialog(self, kind="activity")
+        if int(dialog.exec()) != int(QDialog.DialogCode.Accepted):
+            return
+
+        kind = dialog.context_kind()
+        activity_id = dialog.activity_id()
+        desktop_id = dialog.desktop_id()
+        if kind == "activity":
+            desktop_id = None
+        elif kind == "desktop":
+            activity_id = None
+        try:
+            key, entry = build_context_entry(kind, activity_id, desktop_id, {"monitors": {}})
+        except InvalidConfig:
+            QMessageBox.critical(self, _("Save failed"), _("Invalid context identifier."))
+            return
+
+        contexts = self.config.setdefault("contexts", {})
+        if key in contexts:
+            QMessageBox.critical(self, _("Save failed"), _("A context with this identifier already exists."))
+            return
+
+        contexts[key] = entry
+        self._refresh_context_after_edit(key)
+
+    def _on_edit_context(self):
+        if not self.is_v3 or not self.config_valid:
+            return
+        if self.active_context_key == "default":
+            return
+
+        entry = self._current_context_entry()
+        if not isinstance(entry, dict):
+            return
+
+        dialog = ContextDialog(
+            self,
+            kind=entry.get("kind", "activity"),
+            activity_id=entry.get("activityId", ""),
+            desktop_id=entry.get("desktopId", ""),
+        )
+        if int(dialog.exec()) != int(QDialog.DialogCode.Accepted):
+            return
+
+        kind = dialog.context_kind()
+        activity_id = dialog.activity_id()
+        desktop_id = dialog.desktop_id()
+        if kind == "activity":
+            desktop_id = None
+        elif kind == "desktop":
+            activity_id = None
+        try:
+            new_key, new_entry = build_context_entry(kind, activity_id, desktop_id, entry)
+        except InvalidConfig:
+            QMessageBox.critical(self, _("Save failed"), _("Invalid context identifier."))
+            return
+
+        contexts = self.config.setdefault("contexts", {})
+        if new_key != self.active_context_key and new_key in contexts:
+            QMessageBox.critical(self, _("Save failed"), _("A context with this identifier already exists."))
+            return
+
+        set_context_entry(self.config, self.active_context_key, new_key, new_entry)
+        self._refresh_context_after_edit(new_key)
+
+    def _on_remove_context(self):
+        if not self.is_v3 or not self.config_valid:
+            return
+        if self.active_context_key == "default":
+            QMessageBox.critical(self, _("Save failed"), _("The default context cannot be removed."))
+            return
+        result = QMessageBox.question(
+            self,
+            _("Remove Context"),
+            _("Remove this context?"),
+        )
+        if result != QMessageBox.StandardButton.Yes:
+            return
+        remove_context_entry(self.config, self.active_context_key)
+        self.active_context_key = "default"
+        self._refresh_context_selector()
+        self._select_context("default", reload_binding=True)
+
+    def _load_v3_binding(self, monitor_name: str, position_id: str):
+        exact = get_context_binding(self.config, self.active_context_key, monitor_name, position_id)
+        if self.active_context_key != "default" and not isinstance(exact, dict):
+            preview = get_default_v3_binding(self.config, monitor_name, position_id)
+            state = V3_BINDING_INHERIT if isinstance(preview, dict) else V3_BINDING_INHERIT
+            binding = preview if isinstance(preview, dict) else {"tap": dict(NONE_ACTION), "cooldownMs": DEFAULT_COOLDOWN_MS}
+            self._populate_binding_state_combo(state)
+            self._suppress_binding_signals = True
+            self.action_editor.set_action(binding.get("tap", dict(NONE_ACTION)))
+            self.cooldown_spin.setValue(normalize_cooldown_ms(binding.get("cooldownMs", DEFAULT_COOLDOWN_MS), DEFAULT_COOLDOWN_MS))
+            self._suppress_binding_signals = False
+            self._set_v3_controls_enabled(False)
+            return
+
+        if not isinstance(exact, dict):
+            exact = {"tap": dict(NONE_ACTION), "cooldownMs": DEFAULT_COOLDOWN_MS}
+
+        tap = exact.get("tap", dict(NONE_ACTION))
+        state = determine_v3_binding_state(self.config, self.active_context_key, monitor_name, position_id)
+        if state == V3_BINDING_INHERIT:
+            preview = get_default_v3_binding(self.config, monitor_name, position_id)
+            if isinstance(preview, dict):
+                tap = preview.get("tap", dict(NONE_ACTION))
+                exact = preview
+        self._populate_binding_state_combo(state if state in {V3_BINDING_INHERIT, V3_BINDING_NONE, "shortcut", "command"} else V3_BINDING_NONE)
+        self._suppress_binding_signals = True
+        self.action_editor.set_action(tap)
+        self.cooldown_spin.setValue(normalize_cooldown_ms(exact.get("cooldownMs", DEFAULT_COOLDOWN_MS), DEFAULT_COOLDOWN_MS))
+        self._suppress_binding_signals = False
+        self._set_v3_controls_enabled(state != V3_BINDING_INHERIT or self.active_context_key == "default")
+
     def _current_binding(self):
         if not self.current_selection:
             return None
         monitor_name, position_id = self.current_selection
+        if self.is_v3:
+            return get_context_binding(self.config, self.active_context_key, monitor_name, position_id)
         return self.config["monitors"].get(monitor_name, {}).get(position_id)
 
     def _ensure_current_binding(self):
         if not self.current_selection:
             return None
         monitor_name, position_id = self.current_selection
+        if self.is_v3:
+            if self.active_context_key != "default" and self.binding_state_combo and self.binding_state_combo.currentData() == V3_BINDING_INHERIT:
+                return None
+            preserved = self._local_binding_drafts.get((self.active_context_key, monitor_name, position_id))
+            binding = get_context_binding(self.config, self.active_context_key, monitor_name, position_id)
+            if isinstance(binding, dict):
+                return binding
+            current_state = self.binding_state_combo.currentData() if self.binding_state_combo else "shortcut"
+            if current_state == V3_BINDING_NONE:
+                binding = create_v3_binding(dict(NONE_ACTION), self.cooldown_spin.value(), preserved)
+            elif current_state == "command":
+                binding = create_v3_binding(self.action_editor.current_action(), self.cooldown_spin.value(), preserved)
+            else:
+                binding = create_v3_binding(self.action_editor.current_action(), self.cooldown_spin.value(), preserved)
+            set_v3_binding(self.config, self.active_context_key, monitor_name, position_id, binding)
+            return binding
         monitors = self.config.setdefault("monitors", {})
         monitor = monitors.setdefault(monitor_name, {})
         binding = monitor.get(position_id)
@@ -998,6 +1647,15 @@ class MainWindow(QMainWindow):
         if not mon:
             return
         pos_label = position_label(position_id)
+        if self.is_v3:
+            self.editor_box.setTitle(
+                _("{position} of {monitor}").format(
+                    position=pos_label, monitor=display_name(mon)
+                )
+            )
+            self._load_v3_binding(monitor_name, position_id)
+            self.canvas.set_config(self._canvas_config())
+            return
         self.editor_box.setTitle(
             _("{position} of {monitor}").format(
                 position=pos_label, monitor=display_name(mon)
@@ -1021,6 +1679,37 @@ class MainWindow(QMainWindow):
         if not self.current_selection or not self.config_valid:
             return
 
+        if self.is_v3:
+            if self.binding_state_combo and self.binding_state_combo.currentData() == V3_BINDING_INHERIT and self.active_context_key != "default":
+                return
+            current_state = self.binding_state_combo.currentData() if self.binding_state_combo else None
+            if current_state == V3_BINDING_INHERIT:
+                current_state = action.get("type", "none")
+            if current_state not in {V3_BINDING_NONE, "shortcut", "command"}:
+                current_state = action.get("type", "none")
+            if current_state == V3_BINDING_NONE:
+                action = dict(NONE_ACTION)
+            binding = self._ensure_current_binding()
+            if binding is None:
+                return
+            preserved = copy.deepcopy(binding)
+            preserved["tap"] = _clone_action(action)
+            preserved["cooldownMs"] = normalize_cooldown_ms(
+                preserved.get("cooldownMs", DEFAULT_COOLDOWN_MS),
+                DEFAULT_COOLDOWN_MS,
+            )
+            set_v3_binding(self.config, self.active_context_key, *self.current_selection, preserved)
+            self._local_binding_drafts[(self.active_context_key, *self.current_selection)] = copy.deepcopy(preserved)
+            desired_state = preserved["tap"].get("type", V3_BINDING_NONE)
+            if self.binding_state_combo and self.binding_state_combo.currentData() != desired_state:
+                self._suppress_binding_signals = True
+                idx = self.binding_state_combo.findData(desired_state)
+                if idx >= 0:
+                    self.binding_state_combo.setCurrentIndex(idx)
+                self._suppress_binding_signals = False
+            self.canvas.set_config(self._canvas_config())
+            return
+
         binding = self._ensure_current_binding()
         if binding is None:
             return
@@ -1038,6 +1727,17 @@ class MainWindow(QMainWindow):
         if not self.current_selection or not self.config_valid:
             return
 
+        if self.is_v3:
+            if self.binding_state_combo and self.binding_state_combo.currentData() == V3_BINDING_INHERIT and self.active_context_key != "default":
+                return
+            binding = self._ensure_current_binding()
+            if binding is None:
+                return
+            binding["cooldownMs"] = int(value)
+            self._local_binding_drafts[(self.active_context_key, *self.current_selection)] = copy.deepcopy(binding)
+            self.canvas.set_config(self._canvas_config())
+            return
+
         binding = self._ensure_current_binding()
         if binding is None:
             return
@@ -1046,6 +1746,39 @@ class MainWindow(QMainWindow):
         self.canvas.set_config(self.config)
 
     def _validate_config_for_save(self):
+        if self.is_v3:
+            contexts = self.config.get("contexts", {})
+            if not isinstance(contexts, dict) or "default" not in contexts:
+                return False, _("Invalid context identifier.")
+            for context_key, context in contexts.items():
+                if not isinstance(context, dict):
+                    continue
+                kind = context.get("kind")
+                activity_id = context.get("activityId")
+                desktop_id = context.get("desktopId")
+                ok, _error = validate_context_metadata(kind, activity_id, desktop_id)
+                if not ok:
+                    return False, _("Invalid context identifier.")
+                if context_key != build_context_key(kind, activity_id, desktop_id):
+                    return False, _("Invalid context identifier.")
+                monitors = context.get("monitors", {})
+                if not isinstance(monitors, dict):
+                    return False, _("Invalid context identifier.")
+                for _monitor_name, monitor in monitors.items():
+                    if not isinstance(monitor, dict):
+                        continue
+                    for _position_id, binding in monitor.items():
+                        if _position_id not in POSITION_IDS:
+                            continue
+                        if not isinstance(binding, dict):
+                            continue
+                        cooldown_ok, _cooldown_error = validate_cooldown_ms(binding.get("cooldownMs"))
+                        if not cooldown_ok:
+                            return False, _("Invalid cooldown value.")
+                        tap = binding.get("tap")
+                        if not isinstance(normalize_action(tap), dict):
+                            return False, _("Invalid context identifier.")
+            return True, ""
         monitors = self.config.get("monitors", {})
         for _monitor_name, monitor in monitors.items():
             if not isinstance(monitor, dict):
@@ -1106,19 +1839,25 @@ class MainWindow(QMainWindow):
         self.config_baseline = loaded_config.baseline
         self.config_valid = loaded_config.document is not None
         self.config = loaded_config.document or normalize_config_to_v2({})
-        self.canvas.set_config(self.config)
+        self.is_v3 = is_v3_document(self.config)
+        self.canvas.set_config(self._canvas_config())
+        if self.is_v3:
+            self._refresh_context_selector()
         if self.current_selection:
             mon, pos = self.current_selection
-            binding = self.config["monitors"].get(mon, {}).get(pos, {})
-            action = binding.get("action", dict(NONE_ACTION))
-            cooldown_value = normalize_cooldown_ms(
-                binding.get("cooldownMs", DEFAULT_COOLDOWN_MS),
-                DEFAULT_COOLDOWN_MS,
-            )
-            self._suppress_binding_signals = True
-            self.action_editor.set_action(action)
-            self.cooldown_spin.setValue(cooldown_value)
-            self._suppress_binding_signals = False
+            if self.is_v3:
+                self._load_v3_binding(mon, pos)
+            else:
+                binding = self.config["monitors"].get(mon, {}).get(pos, {})
+                action = binding.get("action", dict(NONE_ACTION))
+                cooldown_value = normalize_cooldown_ms(
+                    binding.get("cooldownMs", DEFAULT_COOLDOWN_MS),
+                    DEFAULT_COOLDOWN_MS,
+                )
+                self._suppress_binding_signals = True
+                self.action_editor.set_action(action)
+                self.cooldown_spin.setValue(cooldown_value)
+                self._suppress_binding_signals = False
 
 
 def main():
