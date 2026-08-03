@@ -691,6 +691,8 @@ function normalizeConfigToV2(config) {
 
 let runtimeConfig = {schemaVersion: RUNTIME_SCHEMA_VERSION, contexts: {}};
 let cooldownTimers = [];
+let tapLingerInteractions = [];
+let tapLingerSignalsConnected = false;
 
 function loadRuntimeConfig() {
     const raw = readConfig("MonitorConfigs", "{}");
@@ -713,6 +715,13 @@ function clearAllCooldownTimers() {
         stopTimer(cooldownTimers[i].timer);
     }
     cooldownTimers = [];
+}
+
+function clearAllTapLingerInteractions() {
+    for (let i = 0; i < tapLingerInteractions.length; i++) {
+        stopTimer(tapLingerInteractions[i].timer);
+    }
+    tapLingerInteractions = [];
 }
 
 function findCooldownTimerIndex(outputName, position) {
@@ -795,8 +804,290 @@ function beginCooldown(outputName, position, cooldownMs) {
     return true;
 }
 
+function beginTapLingerInteraction(outputName, position, screen, binding, contextKey) {
+    if (findTapLingerInteractionIndex(outputName, position) !== -1) {
+        return;
+    }
+
+    for (let i = tapLingerInteractions.length - 1; i >= 0; i--) {
+        const entry = tapLingerInteractions[i];
+        if (entry.outputName === outputName && entry.position === position) {
+            continue;
+        }
+        cancelTapLingerInteraction(entry, true);
+    }
+
+    const state = createTapLingerState();
+    const lingerMs = typeof binding.lingerMs === "number" ? binding.lingerMs : DEFAULT_LINGER_MS;
+    const result = decideTapLinger(state, {
+        type: "enter",
+        nowMs: 0,
+    }, {
+        tapAction: binding.tap,
+        lingerAction: binding.linger,
+        lingerMs,
+        stayZonePx: DEFAULT_STAY_ZONE_PX,
+    });
+
+    if (result.effects.indexOf("tap") !== -1) {
+        dispatchResolvedBindingEffect({
+            outputName,
+            position,
+            binding,
+            contextKey,
+            effect: "tap",
+        });
+        return;
+    }
+
+    if (result.reason !== "pending") {
+        return;
+    }
+
+    const existingIndex = findTapLingerInteractionIndex(outputName, position);
+    if (existingIndex !== -1) {
+        cancelTapLingerInteraction(tapLingerInteractions[existingIndex], false);
+    }
+
+    let timer;
+    try {
+        timer = new QTimer();
+        if (typeof timer.setSingleShot === "function") {
+            timer.setSingleShot(true);
+        } else {
+            timer.singleShot = true;
+        }
+        if (typeof timer.setTimerType === "function") {
+            timer.setTimerType(0);
+        } else {
+            timer.timerType = 0;
+        }
+
+        const interaction = {
+            outputName,
+            position,
+            contextKey,
+            binding: cloneJson(binding),
+            screenGeometry: cloneJson(screen.geometry),
+            state: result.state,
+            timer: null,
+        };
+
+        timer.timeout.connect(function() {
+            handleTapLingerTimeout(interaction);
+        });
+        timer.start(lingerMs);
+
+        if (!isTimerActive(timer)) {
+            throw new Error("timer is not active after start");
+        }
+
+        interaction.timer = timer;
+        tapLingerInteractions.push(interaction);
+    } catch (e) {
+        stopTimer(timer);
+        print("hotcorners-per-monitor: failed to start linger timer:", e);
+    }
+}
+
+function findTapLingerInteractionIndex(outputName, position) {
+    for (let i = 0; i < tapLingerInteractions.length; i++) {
+        const entry = tapLingerInteractions[i];
+        if (entry.outputName === outputName && entry.position === position) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+function removeTapLingerInteraction(outputName, position, timer) {
+    for (let i = 0; i < tapLingerInteractions.length; i++) {
+        const entry = tapLingerInteractions[i];
+        if (entry.outputName !== outputName || entry.position !== position) {
+            continue;
+        }
+        if (timer && entry.timer !== timer) {
+            continue;
+        }
+        tapLingerInteractions.splice(i, 1);
+        return entry;
+    }
+    return null;
+}
+
+function getTapLingerCursorPos() {
+    if (!workspace || !workspace.cursorPos) {
+        return null;
+    }
+    const cursor = workspace.cursorPos;
+    if (typeof cursor.x !== "number" || typeof cursor.y !== "number") {
+        return null;
+    }
+    return cursor;
+}
+
+function isCursorInTapLingerStayZone(cursorPos, geometry, position) {
+    if (!cursorPos || !geometry || typeof position !== "string") {
+        return false;
+    }
+
+    const left = geometry.x;
+    const top = geometry.y;
+    const right = geometry.x + geometry.width;
+    const bottom = geometry.y + geometry.height;
+    const x = cursorPos.x;
+    const y = cursorPos.y;
+
+    if (position === "TopLeft") {
+        return x >= left && x <= left + DEFAULT_STAY_ZONE_PX &&
+               y >= top && y <= top + DEFAULT_STAY_ZONE_PX;
+    }
+    if (position === "TopRight") {
+        return x <= right && x >= right - DEFAULT_STAY_ZONE_PX &&
+               y >= top && y <= top + DEFAULT_STAY_ZONE_PX;
+    }
+    if (position === "BottomLeft") {
+        return x >= left && x <= left + DEFAULT_STAY_ZONE_PX &&
+               y <= bottom && y >= bottom - DEFAULT_STAY_ZONE_PX;
+    }
+    if (position === "BottomRight") {
+        return x <= right && x >= right - DEFAULT_STAY_ZONE_PX &&
+               y <= bottom && y >= bottom - DEFAULT_STAY_ZONE_PX;
+    }
+    if (position === "Top") {
+        return y >= top && y <= top + DEFAULT_STAY_ZONE_PX &&
+               x >= left && x <= right;
+    }
+    if (position === "Bottom") {
+        return y <= bottom && y >= bottom - DEFAULT_STAY_ZONE_PX &&
+               x >= left && x <= right;
+    }
+    if (position === "Left") {
+        return x >= left && x <= left + DEFAULT_STAY_ZONE_PX &&
+               y >= top && y <= bottom;
+    }
+    if (position === "Right") {
+        return x <= right && x >= right - DEFAULT_STAY_ZONE_PX &&
+               y >= top && y <= bottom;
+    }
+
+    return false;
+}
+
+function dispatchResolvedBindingEffect(entry, effect) {
+    const action = effect === "linger" ? entry.binding.linger : entry.binding.tap;
+    if (!isDispatchableAction(action)) {
+        return;
+    }
+    if (!dispatchActionThroughCooldown(entry.outputName, entry.position, entry.binding.cooldownMs, action)) {
+        return;
+    }
+}
+
+function dispatchActionThroughCooldown(outputName, position, cooldownMs, action) {
+    if (!isDispatchableAction(action)) {
+        return false;
+    }
+    if (!validCooldown(cooldownMs)) {
+        return false;
+    }
+
+    if (cooldownMs > 0) {
+        if (isCooldownActive(outputName, position)) {
+            return false;
+        }
+        if (!beginCooldown(outputName, position, cooldownMs)) {
+            return false;
+        }
+    }
+
+    try {
+        executeAction(action);
+        return true;
+    } catch (e) {
+        print("hotcorners-per-monitor: failed to invoke action:", e);
+        return false;
+    }
+}
+
+function cancelTapLingerInteraction(entry, dispatchTap) {
+    if (!entry) {
+        return;
+    }
+
+    stopTimer(entry.timer);
+    removeTapLingerInteraction(entry.outputName, entry.position, entry.timer);
+
+    if (!dispatchTap) {
+        return;
+    }
+
+    dispatchResolvedBindingEffect(entry, "tap");
+}
+
+function handleTapLingerTimeout(entry) {
+    const index = findTapLingerInteractionIndex(entry.outputName, entry.position);
+    if (index === -1 || tapLingerInteractions[index] !== entry) {
+        return;
+    }
+
+    removeTapLingerInteraction(entry.outputName, entry.position, entry.timer);
+    stopTimer(entry.timer);
+
+    const result = decideTapLinger(entry.state, {
+        type: "tick",
+        nowMs: typeof entry.binding.lingerMs === "number" ? entry.binding.lingerMs : DEFAULT_LINGER_MS,
+    }, {
+        tapAction: entry.binding.tap,
+        lingerAction: entry.binding.linger,
+        lingerMs: typeof entry.binding.lingerMs === "number" ? entry.binding.lingerMs : DEFAULT_LINGER_MS,
+        stayZonePx: DEFAULT_STAY_ZONE_PX,
+    });
+
+    if (result.effects.indexOf("linger") === -1) {
+        return;
+    }
+
+    dispatchResolvedBindingEffect(entry, "linger");
+}
+
+function handleTapLingerCursorChange() {
+    const cursorPos = getTapLingerCursorPos();
+    if (!cursorPos) {
+        clearAllTapLingerInteractions();
+        return;
+    }
+
+    for (let i = tapLingerInteractions.length - 1; i >= 0; i--) {
+        const entry = tapLingerInteractions[i];
+        if (!isCursorInTapLingerStayZone(cursorPos, entry.screenGeometry, entry.position)) {
+            cancelTapLingerInteraction(entry, true);
+        }
+    }
+}
+
+function connectTapLingerSignals() {
+    if (tapLingerSignalsConnected) {
+        return;
+    }
+    tapLingerSignalsConnected = true;
+
+    if (workspace && workspace.cursorPosChanged &&
+        typeof workspace.cursorPosChanged.connect === "function") {
+        workspace.cursorPosChanged.connect(handleTapLingerCursorChange);
+    }
+
+    if (workspace && workspace.screensChanged &&
+        typeof workspace.screensChanged.connect === "function") {
+        workspace.screensChanged.connect(function() {
+            clearAllTapLingerInteractions();
+        });
+    }
+}
+
 function loadConfig() {
     clearAllCooldownTimers();
+    clearAllTapLingerInteractions();
     try {
         runtimeConfig = loadRuntimeConfig();
         print("hotcorners-per-monitor: config loaded for outputs:",
@@ -809,6 +1100,7 @@ function loadConfig() {
 
 function cleanupRuntime() {
     clearAllCooldownTimers();
+    clearAllTapLingerInteractions();
 }
 
 function getScreenAtCursor() {
@@ -875,30 +1167,12 @@ function handleCorner(positionName) {
     const binding = resolveContextAction(runtimeConfig, contextKey, outputName, positionName);
     if (!binding) return;
 
-    const action = binding.tap;
-    if (!isDispatchableAction(action)) return;
-
-    const cooldownMs = binding.cooldownMs;
-    if (!validCooldown(cooldownMs)) return;
-
-    if (cooldownMs > 0) {
-        if (isCooldownActive(outputName, positionName)) {
-            return;
-        }
-        if (!beginCooldown(outputName, positionName, cooldownMs)) {
-            return;
-        }
-    }
-
-    try {
-        executeAction(action);
-    } catch (e) {
-        print("hotcorners-per-monitor: failed to invoke action:", e);
-    }
+    beginTapLingerInteraction(outputName, positionName, screen, binding, contextKey);
 }
 
 // Bootstrap: load config + register all 8 corners/edges
 loadConfig();
+connectTapLingerSignals();
 
 for (const positionName of Object.keys(POSITIONS)) {
     const border = POSITIONS[positionName];

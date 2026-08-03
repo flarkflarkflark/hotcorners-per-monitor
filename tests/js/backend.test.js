@@ -250,6 +250,31 @@ function makeFakeQTimerHarness(options = {}) {
     return {QTimer, timers};
 }
 
+function makeSignalHarness() {
+    const callbacks = [];
+    return {
+        callbacks,
+        connectCount: 0,
+        disconnectCount: 0,
+        connect(callback) {
+            callbacks.push(callback);
+            this.connectCount++;
+        },
+        disconnect(callback) {
+            const index = callbacks.indexOf(callback);
+            if (index !== -1) {
+                callbacks.splice(index, 1);
+            }
+            this.disconnectCount++;
+        },
+        emit(...args) {
+            for (const callback of callbacks.slice()) {
+                callback(...args);
+            }
+        },
+    };
+}
+
 function createBackend({
     config = legacyConfig,
     qtimerOptions = {},
@@ -278,6 +303,19 @@ function createBackend({
                 geometry: {x: 3440, y: 0, width: 1920, height: 1080},
             },
         ],
+        cursorPosChanged: makeSignalHarness(),
+        screensChanged: makeSignalHarness(),
+        screenAt(pos) {
+            if (!pos) return null;
+            for (const screen of workspace.screens) {
+                const g = screen.geometry;
+                if (pos.x >= g.x && pos.x < g.x + g.width &&
+                    pos.y >= g.y && pos.y < g.y + g.height) {
+                    return screen;
+                }
+            }
+            return null;
+        },
     };
 
     const contextValues = {
@@ -332,6 +370,15 @@ function createBackend({
 
 function callbackFor(backend, borderName) {
     return backend.callbacks.get(ELECTRIC_BORDERS[borderName]);
+}
+
+function setCursor(backend, x, y) {
+    backend.workspace.cursorPos = {x, y};
+    backend.workspace.cursorPosChanged.emit();
+}
+
+function lastDbusCall(backend) {
+    return backend.dbusCalls[backend.dbusCalls.length - 1];
 }
 
 function totalStartCalls(timers) {
@@ -1551,4 +1598,399 @@ test("runtime normalization and dispatch do not mutate input fixtures", () => {
     backend.context.loadRuntimeConfig();
 
     assert.deepEqual(input, original);
+});
+
+test("tap-linger runtime: immediate tap without linger dispatches immediately and creates no linger timer", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Overview"}),
+                },
+            },
+        }),
+    });
+
+    setCursor(backend, 10, 10);
+    callbackFor(backend, "ElectricTopLeft")();
+
+    assert.equal(backend.dbusCalls.length, 1);
+    assert.equal(backend.timers.some(timer => timer.intervalMs === 500), false);
+});
+
+test("tap-linger runtime: valid linger starts one timer with the documented properties", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding(
+                        {type: "shortcut", component: "kwin", name: "Overview"},
+                        350,
+                        {linger: {type: "shortcut", component: "kwin", name: "Show Desktop"}, lingerMs: 500},
+                    ),
+                },
+            },
+        }),
+    });
+
+    setCursor(backend, 10, 10);
+    callbackFor(backend, "ElectricTopLeft")();
+
+    assert.equal(backend.dbusCalls.length, 0);
+    assert.equal(backend.timers.length, 1);
+    assert.equal(backend.timers[0].singleShot, true);
+    assert.equal(backend.timers[0].timerType, 0);
+    assert.equal(backend.timers[0].intervalMs, 500);
+    assert.equal(backend.timers[0].startCallCount, 1);
+    assert.equal(backend.timers[0].timeoutConnectCount, 1);
+});
+
+test("tap-linger runtime: timeout emits linger exactly once", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding(
+                        {type: "shortcut", component: "kwin", name: "Overview"},
+                        350,
+                        {linger: {type: "shortcut", component: "kwin", name: "Show Desktop"}, lingerMs: 500},
+                    ),
+                },
+            },
+        }),
+    });
+
+    setCursor(backend, 10, 10);
+    callbackFor(backend, "ElectricTopLeft")();
+    backend.timers[0].fireTimeout();
+
+    assert.equal(backend.dbusCalls.length, 1);
+    assert.equal(lastDbusCall(backend)[4], "Show Desktop");
+
+    backend.timers[0].fireTimeout();
+    assert.equal(backend.dbusCalls.length, 1);
+});
+
+test("tap-linger runtime: leaving before the threshold emits tap and stops the linger timer", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding(
+                        {type: "shortcut", component: "kwin", name: "Overview"},
+                        350,
+                        {linger: {type: "shortcut", component: "kwin", name: "Show Desktop"}, lingerMs: 500},
+                    ),
+                },
+            },
+        }),
+    });
+
+    setCursor(backend, 10, 10);
+    callbackFor(backend, "ElectricTopLeft")();
+    setCursor(backend, 9, 0);
+
+    assert.equal(backend.dbusCalls.length, 1);
+    assert.equal(lastDbusCall(backend)[4], "Overview");
+    assert.equal(backend.timers[0].stopCallCount >= 1, true);
+
+    backend.timers[0].fireTimeout();
+    assert.equal(backend.dbusCalls.length, 1);
+});
+
+test("tap-linger runtime: exact 8 px stays pending until timeout", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding(
+                        {type: "shortcut", component: "kwin", name: "Overview"},
+                        350,
+                        {linger: {type: "shortcut", component: "kwin", name: "Show Desktop"}, lingerMs: 500},
+                    ),
+                },
+            },
+        }),
+    });
+
+    setCursor(backend, 10, 10);
+    callbackFor(backend, "ElectricTopLeft")();
+    setCursor(backend, 8, 8);
+
+    assert.equal(backend.dbusCalls.length, 0);
+    assert.equal(backend.timers[0].active, true);
+
+    backend.timers[0].fireTimeout();
+    assert.equal(backend.dbusCalls.length, 1);
+    assert.equal(lastDbusCall(backend)[4], "Show Desktop");
+});
+
+test("tap-linger runtime: duplicate edge enter while pending is ignored", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding(
+                        {type: "shortcut", component: "kwin", name: "Overview"},
+                        350,
+                        {linger: {type: "shortcut", component: "kwin", name: "Show Desktop"}, lingerMs: 500},
+                    ),
+                },
+            },
+        }),
+    });
+
+    setCursor(backend, 10, 10);
+    callbackFor(backend, "ElectricTopLeft")();
+    callbackFor(backend, "ElectricTopLeft")();
+
+    assert.equal(backend.timers.length, 1);
+    assert.equal(backend.timers[0].startCallCount, 1);
+    assert.equal(backend.dbusCalls.length, 0);
+});
+
+test("tap-linger runtime: malformed linger acts like no linger and valid tap still dispatches immediately", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding(
+                        {type: "shortcut", component: "kwin", name: "Overview"},
+                        350,
+                        {linger: {type: "shortcut", component: "", name: ""}},
+                    ),
+                },
+            },
+        }),
+    });
+
+    setCursor(backend, 10, 10);
+    callbackFor(backend, "ElectricTopLeft")();
+
+    assert.equal(backend.dbusCalls.length, 1);
+    assert.equal(backend.timers.some(timer => timer.intervalMs === 500), false);
+});
+
+test("tap-linger runtime: command action can dispatch on linger timeout", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding(
+                        {type: "shortcut", component: "kwin", name: "Overview"},
+                        350,
+                        {linger: {type: "command", program: "/usr/bin/printf", arguments: ["linger"]}, lingerMs: 500},
+                    ),
+                },
+            },
+        }),
+    });
+
+    setCursor(backend, 10, 10);
+    callbackFor(backend, "ElectricTopLeft")();
+    backend.timers[0].fireTimeout();
+
+    assert.equal(backend.dbusCalls.length, 1);
+    assert.equal(lastDbusCall(backend)[0], "org.flark.HotCorners.CommandRunner");
+});
+
+test("tap-linger runtime: resolved cooldown is applied after linger dispatch", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding(
+                        {type: "shortcut", component: "kwin", name: "Overview"},
+                        900,
+                        {linger: {type: "shortcut", component: "kwin", name: "Show Desktop"}, lingerMs: 500},
+                    ),
+                },
+            },
+        }),
+    });
+
+    setCursor(backend, 10, 10);
+    callbackFor(backend, "ElectricTopLeft")();
+    backend.timers[0].fireTimeout();
+
+    assert.equal(backend.dbusCalls.length, 1);
+    assert.equal(activeTimerCount(backend.timers), 1);
+
+    setCursor(backend, 10, 10);
+    callbackFor(backend, "ElectricTopLeft")();
+    assert.equal(backend.dbusCalls.length, 1);
+});
+
+test("tap-linger runtime: exact context override wins over default linger", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding(
+                        {type: "shortcut", component: "kwin", name: "Default"},
+                        350,
+                        {linger: {type: "shortcut", component: "kwin", name: "Default Linger"}, lingerMs: 500},
+                    ),
+                },
+            },
+            activityMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding(
+                        {type: "shortcut", component: "kwin", name: "Exact"},
+                        350,
+                        {linger: {type: "shortcut", component: "kwin", name: "Exact Linger"}, lingerMs: 500},
+                    ),
+                },
+            },
+        }),
+    });
+
+    setRuntimeContext(backend, {activityId: "work"});
+    setCursor(backend, 10, 10);
+    callbackFor(backend, "ElectricTopLeft")();
+    backend.timers[0].fireTimeout();
+
+    assert.equal(lastDbusCall(backend)[4], "Exact Linger");
+});
+
+test("tap-linger runtime: omission falls back to default linger", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding(
+                        {type: "shortcut", component: "kwin", name: "Default"},
+                        350,
+                        {linger: {type: "shortcut", component: "kwin", name: "Default Linger"}, lingerMs: 500},
+                    ),
+                },
+            },
+            activityMonitors: {
+                "DP-1": {},
+            },
+        }),
+    });
+
+    setRuntimeContext(backend, {activityId: "work"});
+    setCursor(backend, 10, 10);
+    callbackFor(backend, "ElectricTopLeft")();
+    backend.timers[0].fireTimeout();
+
+    assert.equal(lastDbusCall(backend)[4], "Default Linger");
+});
+
+test("tap-linger runtime: explicit none blocks fallback and creates no linger timer", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Default"}),
+                },
+            },
+            activityMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "none"}),
+                },
+            },
+        }),
+    });
+
+    setRuntimeContext(backend, {activityId: "work"});
+    setCursor(backend, 10, 10);
+    callbackFor(backend, "ElectricTopLeft")();
+
+    assert.equal(backend.dbusCalls.length, 0);
+    assert.equal(backend.timers.length, 0);
+});
+
+test("tap-linger runtime: reload and cleanup stop active linger timers and stale callbacks do nothing", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding(
+                        {type: "shortcut", component: "kwin", name: "Overview"},
+                        350,
+                        {linger: {type: "shortcut", component: "kwin", name: "Show Desktop"}, lingerMs: 500},
+                    ),
+                },
+            },
+        }),
+    });
+
+    setCursor(backend, 10, 10);
+    callbackFor(backend, "ElectricTopLeft")();
+    const lingerTimer = backend.timers[0];
+
+    backend.context.loadConfig();
+    assert.equal(lingerTimer.stopCallCount, 1);
+    setCursor(backend, 9, 0);
+    lingerTimer.fireTimeout();
+    assert.equal(backend.dbusCalls.length, 0);
+
+    setCursor(backend, 10, 10);
+    callbackFor(backend, "ElectricTopLeft")();
+    backend.context.cleanupRuntime();
+    assert.equal(backend.timers[1].stopCallCount, 1);
+    backend.timers[1].fireTimeout();
+    assert.equal(backend.dbusCalls.length, 0);
+});
+
+test("tap-linger runtime: timer constructor, connect and start failures fail safe", () => {
+    const failureCases = [
+        {name: "constructor", qtimerOptions: {constructorThrows: true}},
+        {name: "connect", qtimerOptions: {perTimer: [{connectThrows: true}]}},
+        {name: "start", qtimerOptions: {perTimer: [{startThrows: true}]}},
+    ];
+
+    for (const failureCase of failureCases) {
+        const backend = createBackend({
+            config: makeRuntimeConfig({
+                defaultMonitors: {
+                    "DP-1": {
+                        TopLeft: makeV3Binding(
+                            {type: "shortcut", component: "kwin", name: "Overview"},
+                            350,
+                            {linger: {type: "shortcut", component: "kwin", name: "Show Desktop"}, lingerMs: 500},
+                        ),
+                    },
+                },
+            }),
+            qtimerOptions: failureCase.qtimerOptions,
+        });
+
+        setCursor(backend, 10, 10);
+        callbackFor(backend, "ElectricTopLeft")();
+
+        assert.equal(backend.dbusCalls.length, 0, failureCase.name);
+        assert.equal(
+            backend.prints.some(args => args.join(" ").includes("failed to start linger timer")),
+            true,
+            failureCase.name,
+        );
+    }
+});
+
+test("tap-linger runtime: invalid cursor data cancels pending interactions without dispatch", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding(
+                        {type: "shortcut", component: "kwin", name: "Overview"},
+                        350,
+                        {linger: {type: "shortcut", component: "kwin", name: "Show Desktop"}, lingerMs: 500},
+                    ),
+                },
+            },
+        }),
+    });
+
+    setCursor(backend, 10, 10);
+    callbackFor(backend, "ElectricTopLeft")();
+    backend.workspace.cursorPos = {x: "bad", y: 0};
+    backend.workspace.cursorPosChanged.emit();
+
+    assert.equal(backend.dbusCalls.length, 0);
+    assert.equal(backend.timers[0].stopCallCount, 1);
 });
