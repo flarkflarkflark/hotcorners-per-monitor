@@ -41,6 +41,8 @@ const POSITIONS = {
 const SCHEMA_VERSION = 2;
 const RUNTIME_SCHEMA_VERSION = 3;
 const DEFAULT_COOLDOWN_MS = 350;
+const DEFAULT_LINGER_MS = 500;
+const DEFAULT_STAY_ZONE_PX = 8;
 const LEGACY_COOLDOWN_MS = 0;
 const MAX_COOLDOWN_MS = 10000;
 const COMMAND_RUNNER_BUS = "org.flark.HotCorners.CommandRunner";
@@ -336,6 +338,19 @@ function classifyAction(action) {
     return "invalid";
 }
 
+function classifyTapLingerAction(action) {
+    if (typeof action === "undefined") {
+        return "missing";
+    }
+    if (!isObject(action)) {
+        return "malformed";
+    }
+    if (action.type === "none") {
+        return "none";
+    }
+    return normalizeAction(action) ? "valid" : "malformed";
+}
+
 function isResolvableBinding(binding) {
     return isObject(binding) && classifyAction(binding.tap) !== "invalid";
 }
@@ -445,6 +460,148 @@ function decideCooldown(state, outputName, position, cooldownMs, nowMs) {
         reason: "cooldown-elapsed",
         state: Object.assign({}, state, {entries}),
     };
+}
+
+function createTapLingerState() {
+    return {
+        active: false,
+        enteredAtMs: null,
+        lastNowMs: null,
+    };
+}
+
+function validTapLingerTimestamp(value) {
+    return Number.isInteger(value) && value >= 0;
+}
+
+function readTapLingerActionStatus(options, key) {
+    if (!isObject(options) || !hasOwn(options, key)) {
+        return "missing";
+    }
+    return classifyTapLingerAction(options[key]);
+}
+
+function decideTapLinger(state, event, options) {
+    if (!isObject(state)) {
+        throw new TypeError("state must be an object");
+    }
+    if (!isObject(event)) {
+        throw new TypeError("event must be an object");
+    }
+    if (typeof event.type !== "string" || !event.type) {
+        throw new TypeError("event.type must be a non-empty string");
+    }
+    if (!validTapLingerTimestamp(event.nowMs)) {
+        throw new TypeError("event.nowMs must be a non-negative integer");
+    }
+
+    const params = isObject(options) ? options : {};
+    const lingerMs = hasOwn(params, "lingerMs") ? params.lingerMs : DEFAULT_LINGER_MS;
+    const stayZonePx = hasOwn(params, "stayZonePx") ? params.stayZonePx : DEFAULT_STAY_ZONE_PX;
+    if (!validTapLingerTimestamp(lingerMs)) {
+        throw new RangeError("lingerMs must be a non-negative integer");
+    }
+    if (!validTapLingerTimestamp(stayZonePx)) {
+        throw new RangeError("stayZonePx must be a non-negative integer");
+    }
+
+    const status = {
+        tap: readTapLingerActionStatus(params, "tapAction"),
+        linger: readTapLingerActionStatus(params, "lingerAction"),
+    };
+    const tapDispatchable = status.tap === "valid";
+    const lingerDispatchable = status.linger === "valid";
+    const baseState = Object.assign({}, state, {lastNowMs: event.nowMs});
+
+    function finish(nextState, effects, reason) {
+        return {
+            state: nextState,
+            effects,
+            reason,
+            status,
+        };
+    }
+
+    if (state.active === true) {
+        if (!validTapLingerTimestamp(state.enteredAtMs) ||
+            (state.lastNowMs !== null && !validTapLingerTimestamp(state.lastNowMs))) {
+            throw new TypeError("state contains an invalid timestamp");
+        }
+        if (event.nowMs < (state.lastNowMs === null ? state.enteredAtMs : state.lastNowMs)) {
+            return finish(Object.assign({}, state), [], "clock-regression");
+        }
+
+        const elapsedMs = event.nowMs - state.enteredAtMs;
+
+        if (event.type === "cancel") {
+            return finish(Object.assign({}, baseState, {
+                active: false,
+                enteredAtMs: null,
+            }), [], "cancelled");
+        }
+
+        if (event.type === "enter") {
+            return finish(baseState, [], "ignored");
+        }
+
+        if (elapsedMs >= lingerMs) {
+            return finish(Object.assign({}, baseState, {
+                active: false,
+                enteredAtMs: null,
+            }), lingerDispatchable ? ["linger"] : [], lingerDispatchable ? "linger" : "ignored");
+        }
+
+        if (event.type === "leave") {
+            return finish(Object.assign({}, baseState, {
+                active: false,
+                enteredAtMs: null,
+            }), tapDispatchable ? ["tap"] : [], tapDispatchable ? "tap" : "ignored");
+        }
+
+        if (event.type === "move") {
+            if (!validTapLingerTimestamp(event.distancePx)) {
+                throw new TypeError("event.distancePx must be a non-negative integer");
+            }
+            if (event.distancePx > stayZonePx) {
+                return finish(Object.assign({}, baseState, {
+                    active: false,
+                    enteredAtMs: null,
+                }), tapDispatchable ? ["tap"] : [], tapDispatchable ? "tap" : "ignored");
+            }
+            return finish(baseState, [], "ignored");
+        }
+
+        if (event.type === "tick") {
+            return finish(baseState, [], "ignored");
+        }
+
+        throw new TypeError("unsupported event type: " + event.type);
+    }
+
+    if (event.type === "enter") {
+        if (lingerDispatchable) {
+            return finish(Object.assign({}, baseState, {
+                active: true,
+                enteredAtMs: event.nowMs,
+            }), [], "pending");
+        }
+        if (tapDispatchable) {
+            return finish(Object.assign({}, baseState, {
+                active: false,
+                enteredAtMs: null,
+            }), ["tap"], "immediate-tap");
+        }
+        return finish(Object.assign({}, baseState, {
+            active: false,
+            enteredAtMs: null,
+        }), [], "ignored");
+    }
+
+    if (event.type === "move" && !validTapLingerTimestamp(event.distancePx)) {
+        throw new TypeError("event.distancePx must be a non-negative integer");
+    }
+
+    return finish(baseState, [], "ignored");
 }
 
 function getCurrentContextKey(screen) {
