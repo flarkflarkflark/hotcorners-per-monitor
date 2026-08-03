@@ -93,6 +93,68 @@ function makeCommandGateConfig() {
     };
 }
 
+function makeV3Binding(action, cooldownMs = 350, extra = {}) {
+    return Object.assign({tap: action, cooldownMs}, extra);
+}
+
+function makeV3Context(kind, monitors, extra = {}) {
+    return Object.assign({kind, monitors}, extra);
+}
+
+function makeV3Config(contexts, extra = {}) {
+    return Object.assign({schemaVersion: 3, contexts}, extra);
+}
+
+function setRuntimeContext(backend, {
+    activityId = "",
+    desktopIdByOutput = {},
+} = {}) {
+    backend.workspace.currentActivity = activityId;
+    backend.workspace.currentDesktopForScreen = screen => {
+        if (!screen || !screen.name) {
+            return null;
+        }
+        if (Object.prototype.hasOwnProperty.call(desktopIdByOutput, screen.name)) {
+            const desktopId = desktopIdByOutput[screen.name];
+            if (!desktopId) {
+                return null;
+            }
+            return {id: desktopId};
+        }
+        return null;
+    };
+}
+
+function makeRuntimeConfig({
+    defaultMonitors = {},
+    activityMonitors = null,
+    desktopMonitors = null,
+    combinedMonitors = null,
+    extraContexts = {},
+    activityId = "work",
+    desktopId = "desk-1",
+    extraRoot = {},
+} = {}) {
+    const contexts = Object.assign({}, extraContexts);
+    if (defaultMonitors !== null) {
+        contexts.default = makeV3Context("default", defaultMonitors);
+    }
+    if (activityMonitors !== null) {
+        contexts[`activity:${activityId}`] = makeV3Context("activity", activityMonitors, {activityId});
+    }
+    if (desktopMonitors !== null) {
+        contexts[`desktop:${desktopId}`] = makeV3Context("desktop", desktopMonitors, {desktopId});
+    }
+    if (combinedMonitors !== null) {
+        contexts[`activity:${activityId}|desktop:${desktopId}`] = makeV3Context(
+            "activityDesktop",
+            combinedMonitors,
+            {activityId, desktopId},
+        );
+    }
+    return makeV3Config(contexts, extraRoot);
+}
+
 function readFixture(name) {
     return JSON.parse(
         fs.readFileSync(path.join(ROOT, "tests/fixtures", name), "utf8"),
@@ -332,14 +394,601 @@ test("command A/B/C: valid command dispatches one helper call with exact argv JS
     );
 });
 
-test("runtime load migrates v0.1 to v0.2 in memory without writing", () => {
+test("runtime load migrates v0.1 to v0.3 in memory without writing", () => {
     const backend = createBackend({config: legacyConfig});
 
     const config = plain(backend.context.loadRuntimeConfig());
 
-    assert.equal(config.schemaVersion, 2);
-    assert.equal(config.monitors["DP-1"].TopLeft.cooldownMs, 0);
+    assert.equal(config.schemaVersion, 3);
+    assert.equal(config.contexts.default.monitors["DP-1"].TopLeft.cooldownMs, 0);
     assert.deepEqual(backend.writes, []);
+});
+
+test("context precedence chooses combined, activity, desktop, then default", () => {
+    const config = makeRuntimeConfig({
+        defaultMonitors: {
+            "DP-1": {
+                TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Default"}),
+            },
+        },
+        activityMonitors: {
+            "DP-1": {
+                TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Activity"}),
+            },
+        },
+        desktopMonitors: {
+            "DP-1": {
+                TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Desktop"}),
+            },
+        },
+        combinedMonitors: {
+            "DP-1": {
+                TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Combined"}, 900),
+            },
+        },
+    });
+
+    const cases = [
+        {
+            name: "combined",
+            setup(backend) {
+                setRuntimeContext(backend, {
+                    activityId: "work",
+                    desktopIdByOutput: {"DP-1": "desk-1"},
+                });
+            },
+            expectedName: "Combined",
+            expectedCooldown: 900,
+        },
+        {
+            name: "activity",
+            setup(backend) {
+                setRuntimeContext(backend, {
+                    activityId: "work",
+                });
+            },
+            expectedName: "Activity",
+            expectedCooldown: 350,
+        },
+        {
+            name: "desktop",
+            setup(backend) {
+                setRuntimeContext(backend, {
+                    desktopIdByOutput: {"DP-1": "desk-1"},
+                });
+            },
+            expectedName: "Desktop",
+            expectedCooldown: 350,
+        },
+        {
+            name: "default",
+            setup(backend) {
+                setRuntimeContext(backend);
+            },
+            expectedName: "Default",
+            expectedCooldown: 350,
+        },
+    ];
+
+    for (const scenario of cases) {
+        const backend = createBackend({config});
+        scenario.setup(backend);
+        backend.workspace.cursorPos = {x: 10, y: 10};
+
+        callbackFor(backend, "ElectricTopLeft")();
+
+        assert.equal(backend.dbusCalls.length, 1, scenario.name);
+        assert.deepEqual(backend.dbusCalls[0], [
+            "org.kde.kglobalaccel",
+            "/component/kwin",
+            "org.kde.kglobalaccel.Component",
+            "invokeShortcut",
+            scenario.expectedName,
+        ]);
+        assert.equal(backend.timers.length, 1, scenario.name);
+        assert.equal(backend.timers[0].intervalMs, scenario.expectedCooldown, scenario.name);
+        assert.deepEqual(backend.writes, []);
+    }
+});
+
+test("explicit none blocks fallback and starts no timer", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Default"}),
+                },
+            },
+            combinedMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "none"}),
+                },
+            },
+        }),
+    });
+    setRuntimeContext(backend, {
+        activityId: "work",
+        desktopIdByOutput: {"DP-1": "desk-1"},
+    });
+    backend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(backend, "ElectricTopLeft")();
+
+    assert.equal(backend.dbusCalls.length, 0);
+    assert.equal(backend.timers.length, 0);
+    assert.deepEqual(backend.writes, []);
+});
+
+test("malformed exact action falls through to default", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Default"}),
+                },
+            },
+            combinedMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({
+                        type: "command",
+                        program: "",
+                        arguments: ["bad"],
+                    }),
+                },
+            },
+        }),
+    });
+    setRuntimeContext(backend, {
+        activityId: "work",
+        desktopIdByOutput: {"DP-1": "desk-1"},
+    });
+    backend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(backend, "ElectricTopLeft")();
+
+    assert.equal(backend.dbusCalls.length, 1);
+    assert.equal(backend.dbusCalls[0][0], "org.kde.kglobalaccel");
+    assert.equal(backend.dbusCalls[0][4], "Default");
+    assert.equal(backend.timers.length, 1);
+    assert.deepEqual(backend.writes, []);
+});
+
+test("malformed default action resolves to no dispatch", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({
+                        type: "command",
+                        program: "",
+                        arguments: ["bad"],
+                    }),
+                },
+            },
+            combinedMonitors: {
+                "DP-1": {},
+            },
+        }),
+    });
+    setRuntimeContext(backend, {
+        activityId: "work",
+        desktopIdByOutput: {"DP-1": "desk-1"},
+    });
+    backend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(backend, "ElectricTopLeft")();
+
+    assert.equal(backend.dbusCalls.length, 0);
+    assert.equal(backend.timers.length, 0);
+    assert.deepEqual(backend.writes, []);
+});
+
+test("missing contexts.default produces no dispatch", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: null,
+            activityMonitors: {
+                "HDMI-A-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Activity"}),
+                },
+            },
+            combinedMonitors: {
+                "DP-1": {},
+            },
+        }),
+    });
+    setRuntimeContext(backend, {
+        activityId: "work",
+        desktopIdByOutput: {"DP-1": "desk-1"},
+    });
+    backend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(backend, "ElectricTopLeft")();
+
+    assert.equal(backend.dbusCalls.length, 0);
+    assert.equal(backend.timers.length, 0);
+});
+
+test("output and position isolation are enforced by runtime resolution", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "HDMI-A-1": {
+                    TopRight: makeV3Binding({type: "shortcut", component: "kwin", name: "Wrong output"}),
+                },
+            },
+            combinedMonitors: {
+                "HDMI-A-1": {
+                    TopRight: makeV3Binding({type: "shortcut", component: "kwin", name: "Wrong position"}),
+                },
+            },
+        }),
+    });
+    setRuntimeContext(backend, {
+        activityId: "work",
+        desktopIdByOutput: {"DP-1": "desk-1"},
+    });
+    backend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(backend, "ElectricTopLeft")();
+
+    assert.equal(backend.dbusCalls.length, 0);
+    assert.equal(backend.timers.length, 0);
+});
+
+test("no inheritance from another non-default context", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: null,
+            activityMonitors: {
+                "HDMI-A-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Other activity"}),
+                },
+            },
+            combinedMonitors: {
+                "DP-1": {},
+            },
+        }),
+    });
+    setRuntimeContext(backend, {
+        activityId: "work",
+        desktopIdByOutput: {"DP-1": "desk-1"},
+    });
+    backend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(backend, "ElectricTopLeft")();
+
+    assert.equal(backend.dbusCalls.length, 0);
+    assert.equal(backend.timers.length, 0);
+});
+
+test("command actions resolve through exact context and fallback", () => {
+    const exactBackend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Default"}),
+                },
+            },
+            combinedMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({
+                        type: "command",
+                        program: "/usr/bin/printf",
+                        arguments: ["%s\\n", "exact"],
+                    }),
+                },
+            },
+        }),
+    });
+    setRuntimeContext(exactBackend, {
+        activityId: "work",
+        desktopIdByOutput: {"DP-1": "desk-1"},
+    });
+    exactBackend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(exactBackend, "ElectricTopLeft")();
+
+    assert.equal(exactBackend.dbusCalls.length, 1);
+    assert.equal(exactBackend.dbusCalls[0][0], "org.flark.HotCorners.CommandRunner");
+    assert.equal(exactBackend.dbusCalls[0][4], "/usr/bin/printf");
+    assert.equal(JSON.parse(exactBackend.dbusCalls[0][5])[1], "exact");
+
+    const fallbackBackend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({
+                        type: "command",
+                        program: "/usr/bin/printf",
+                        arguments: ["%s\\n", "fallback"],
+                    }),
+                },
+            },
+            combinedMonitors: {
+                "DP-1": {},
+            },
+        }),
+    });
+    setRuntimeContext(fallbackBackend, {
+        activityId: "work",
+        desktopIdByOutput: {"DP-1": "desk-1"},
+    });
+    fallbackBackend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(fallbackBackend, "ElectricTopLeft")();
+
+    assert.equal(fallbackBackend.dbusCalls.length, 1);
+    assert.equal(fallbackBackend.dbusCalls[0][0], "org.flark.HotCorners.CommandRunner");
+    assert.equal(JSON.parse(fallbackBackend.dbusCalls[0][5])[1], "fallback");
+});
+
+test("resolved cooldown override and fallback cooldown remain distinct", () => {
+    const overrideBackend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Default"}, 350),
+                },
+            },
+            combinedMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Exact"}, 900),
+                },
+            },
+        }),
+    });
+    setRuntimeContext(overrideBackend, {
+        activityId: "work",
+        desktopIdByOutput: {"DP-1": "desk-1"},
+    });
+    overrideBackend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(overrideBackend, "ElectricTopLeft")();
+
+    assert.equal(overrideBackend.timers[0].intervalMs, 900);
+    assert.equal(overrideBackend.dbusCalls[0][4], "Exact");
+
+    const fallbackBackend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Default"}, 350),
+                },
+            },
+            combinedMonitors: {
+                "DP-1": {},
+            },
+        }),
+    });
+    setRuntimeContext(fallbackBackend, {
+        activityId: "work",
+        desktopIdByOutput: {"DP-1": "desk-1"},
+    });
+    fallbackBackend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(fallbackBackend, "ElectricTopLeft")();
+
+    assert.equal(fallbackBackend.timers[0].intervalMs, 350);
+    assert.equal(fallbackBackend.dbusCalls[0][4], "Default");
+});
+
+test("cooldown denial and timeout release stay unchanged under context resolution", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Default"}, 350),
+                },
+            },
+            combinedMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Exact"}, 900),
+                },
+            },
+        }),
+    });
+    setRuntimeContext(backend, {
+        activityId: "work",
+        desktopIdByOutput: {"DP-1": "desk-1"},
+    });
+    backend.workspace.cursorPos = {x: 10, y: 10};
+    const trigger = callbackFor(backend, "ElectricTopLeft");
+
+    trigger();
+    trigger();
+
+    assert.equal(backend.dbusCalls.length, 1);
+    assert.equal(backend.timers.length, 1);
+    assert.equal(totalStartCalls(backend.timers), 1);
+
+    backend.timers[0].fireTimeout();
+    trigger();
+
+    assert.equal(backend.dbusCalls.length, 2);
+    assert.equal(totalStartCalls(backend.timers), 2);
+});
+
+test("config reload clears resolved timers and re-evaluates context", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Before"}, 350),
+                },
+            },
+            combinedMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Before exact"}, 900),
+                },
+            },
+        }),
+    });
+    setRuntimeContext(backend, {
+        activityId: "work",
+        desktopIdByOutput: {"DP-1": "desk-1"},
+    });
+    backend.workspace.cursorPos = {x: 10, y: 10};
+    const trigger = callbackFor(backend, "ElectricTopLeft");
+
+    trigger();
+    assert.equal(backend.timers.length, 1);
+
+    backend.setConfig(makeRuntimeConfig({
+        defaultMonitors: {
+            "DP-1": {
+                TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "After"}, 350),
+            },
+        },
+        combinedMonitors: null,
+    }));
+    backend.context.loadConfig();
+
+    assert.equal(backend.timers[0].stopCallCount, 1);
+
+    setRuntimeContext(backend, {});
+    trigger();
+
+    assert.equal(backend.dbusCalls.length, 2);
+    assert.equal(backend.dbusCalls[1][4], "After");
+});
+
+test("cleanup stops resolved timers and stale timeout callbacks do nothing", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Default"}, 350),
+                },
+            },
+            combinedMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Exact"}, 900),
+                },
+            },
+        }),
+    });
+    setRuntimeContext(backend, {
+        activityId: "work",
+        desktopIdByOutput: {"DP-1": "desk-1"},
+    });
+    backend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(backend, "ElectricTopLeft")();
+    const dispatchCount = backend.dbusCalls.length;
+
+    backend.context.cleanupRuntime();
+    assert.equal(backend.timers[0].stopCallCount, 1);
+
+    backend.timers[0].fireTimeout();
+    assert.equal(backend.dbusCalls.length, dispatchCount);
+});
+
+test("resolver is called exactly once per trigger", () => {
+    const backend = createBackend({
+        config: makeRuntimeConfig({
+            defaultMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Default"}),
+                },
+            },
+            combinedMonitors: {
+                "DP-1": {
+                    TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Exact"}),
+                },
+            },
+        }),
+    });
+    let resolveCalls = 0;
+    const originalResolve = backend.context.resolveContextAction;
+    backend.context.resolveContextAction = function(...args) {
+        resolveCalls++;
+        return originalResolve(...args);
+    };
+    setRuntimeContext(backend, {
+        activityId: "work",
+        desktopIdByOutput: {"DP-1": "desk-1"},
+    });
+    backend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(backend, "ElectricTopLeft")();
+
+    assert.equal(resolveCalls, 1);
+});
+
+test("unknown extension fields do not affect runtime resolution", () => {
+    const input = makeRuntimeConfig({
+        defaultMonitors: {
+            "DP-1": {
+                TopLeft: makeV3Binding({
+                    type: "shortcut",
+                    component: "kwin",
+                    name: "Default",
+                }, 350, {
+                    xTestBindingHint: "binding",
+                }),
+            },
+        },
+        combinedMonitors: {
+            "DP-1": {
+                TopLeft: makeV3Binding({
+                    type: "shortcut",
+                    component: "kwin",
+                    name: "Exact",
+                }, 900, {
+                    xTestBindingHint: "exact-binding",
+                }),
+            },
+        },
+        extraRoot: {xTestRootHint: true},
+    });
+    input.contexts.default.xTestContextHint = "default-context";
+    input.contexts["activity:work|desktop:desk-1"].xTestContextHint = "exact-context";
+    input.contexts.default.monitors["DP-1"].TopLeft.tap.xTestActionHint = "default-action";
+    input.contexts["activity:work|desktop:desk-1"].monitors["DP-1"].TopLeft.tap.xTestActionHint = "exact-action";
+
+    const original = structuredClone(input);
+    const backend = createBackend({config: input});
+    setRuntimeContext(backend, {
+        activityId: "work",
+        desktopIdByOutput: {"DP-1": "desk-1"},
+    });
+    backend.workspace.cursorPos = {x: 10, y: 10};
+
+    callbackFor(backend, "ElectricTopLeft")();
+    backend.context.loadRuntimeConfig();
+
+    assert.deepEqual(input, original);
+    assert.equal(backend.dbusCalls[0][4], "Exact");
+});
+
+test("prototype-sensitive activity ids resolve safely through the runtime context key", () => {
+    const ids = ["__proto__", "constructor", "toString"];
+    for (const activityId of ids) {
+        const backend = createBackend({
+            config: makeRuntimeConfig({
+                defaultMonitors: {
+                    "DP-1": {
+                        TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: "Default"}),
+                    },
+                },
+                extraContexts: {
+                    [`activity:${activityId}`]: makeV3Context("activity", {
+                        "DP-1": {
+                            TopLeft: makeV3Binding({type: "shortcut", component: "kwin", name: activityId}),
+                        },
+                    }, {activityId}),
+                },
+            }),
+        });
+        setRuntimeContext(backend, {activityId});
+        backend.workspace.cursorPos = {x: 10, y: 10};
+
+        callbackFor(backend, "ElectricTopLeft")();
+
+        assert.equal(backend.dbusCalls.length, 1);
+        assert.equal(backend.dbusCalls[0][4], activityId);
+    }
 });
 
 test("invalid JSON fails closed without writing or partial dispatch", () => {

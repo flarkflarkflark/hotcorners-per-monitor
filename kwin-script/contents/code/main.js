@@ -39,6 +39,7 @@ const POSITIONS = {
 };
 
 const SCHEMA_VERSION = 2;
+const RUNTIME_SCHEMA_VERSION = 3;
 const DEFAULT_COOLDOWN_MS = 350;
 const LEGACY_COOLDOWN_MS = 0;
 const MAX_COOLDOWN_MS = 10000;
@@ -220,6 +221,77 @@ function createV2Binding(action, cooldownMs = DEFAULT_COOLDOWN_MS) {
     return {action: normalizedAction, cooldownMs};
 }
 
+function normalizeV2BindingToV3(binding) {
+    if (!isObject(binding)) return null;
+
+    const action = normalizeAction(binding.action);
+    if (!action || !validCooldown(binding.cooldownMs)) {
+        return null;
+    }
+
+    const normalized = cloneJson(binding);
+    normalized.tap = action;
+    delete normalized.action;
+    normalized.cooldownMs = binding.cooldownMs;
+    return normalized;
+}
+
+function normalizeConfigToV3(config) {
+    if (!isObject(config)) throw new Error("configuration root must be an object");
+
+    if (!Object.prototype.hasOwnProperty.call(config, "schemaVersion")) {
+        return {
+            schemaVersion: RUNTIME_SCHEMA_VERSION,
+            contexts: {
+                default: {
+                    kind: "default",
+                    monitors: normalizeMonitorsToV3(config, true),
+                },
+            },
+        };
+    }
+    if (config.schemaVersion === SCHEMA_VERSION) {
+        const normalized = cloneJson(config);
+        normalized.schemaVersion = RUNTIME_SCHEMA_VERSION;
+        normalized.contexts = {
+            default: {
+                kind: "default",
+                monitors: normalizeMonitorsToV3(config.monitors, false),
+            },
+        };
+        delete normalized.monitors;
+        return normalized;
+    }
+    if (config.schemaVersion !== RUNTIME_SCHEMA_VERSION) {
+        throw new Error("unsupported schema version: " + config.schemaVersion);
+    }
+
+    const normalized = cloneJson(config);
+    normalized.schemaVersion = RUNTIME_SCHEMA_VERSION;
+    return normalized;
+}
+
+function normalizeMonitorsToV3(monitors, legacy) {
+    const normalizedV2 = normalizeMonitors(monitors, legacy);
+    const normalized = {};
+    for (const outputName of Object.keys(normalizedV2)) {
+        const monitor = normalizedV2[outputName];
+        if (!isObject(monitor)) {
+            continue;
+        }
+        const normalizedMonitor = {};
+        for (const position of Object.keys(monitor)) {
+            const binding = normalizeV2BindingToV3(monitor[position]);
+            if (!binding) {
+                continue;
+            }
+            normalizedMonitor[position] = binding;
+        }
+        normalized[outputName] = normalizedMonitor;
+    }
+    return normalized;
+}
+
 function hasOwn(object, key) {
     return Object.prototype.hasOwnProperty.call(object, key);
 }
@@ -375,6 +447,32 @@ function decideCooldown(state, outputName, position, cooldownMs, nowMs) {
     };
 }
 
+function getCurrentContextKey(screen) {
+    const activityId = typeof workspace.currentActivity === "string" ?
+        workspace.currentActivity : "";
+    let desktopId = "";
+    if (workspace && typeof workspace.currentDesktopForScreen === "function") {
+        const desktop = workspace.currentDesktopForScreen(screen);
+        if (desktop && typeof desktop.id === "string") {
+            desktopId = desktop.id;
+        }
+    } else if (workspace && workspace.currentDesktop &&
+               typeof workspace.currentDesktop.id === "string") {
+        desktopId = workspace.currentDesktop.id;
+    }
+
+    if (activityId && desktopId) {
+        return "activity:" + activityId + "|desktop:" + desktopId;
+    }
+    if (activityId) {
+        return "activity:" + activityId;
+    }
+    if (desktopId) {
+        return "desktop:" + desktopId;
+    }
+    return "default";
+}
+
 function normalizeMonitors(monitors, legacy) {
     if (!isObject(monitors)) throw new Error("monitors must be an object");
 
@@ -434,12 +532,12 @@ function normalizeConfigToV2(config) {
     return normalized;
 }
 
-let runtimeConfig = {schemaVersion: SCHEMA_VERSION, monitors: {}};
+let runtimeConfig = {schemaVersion: RUNTIME_SCHEMA_VERSION, contexts: {}};
 let cooldownTimers = [];
 
 function loadRuntimeConfig() {
     const raw = readConfig("MonitorConfigs", "{}");
-    return normalizeConfigToV2(JSON.parse(raw));
+    return normalizeConfigToV3(JSON.parse(raw));
 }
 
 function stopTimer(timer) {
@@ -545,10 +643,10 @@ function loadConfig() {
     try {
         runtimeConfig = loadRuntimeConfig();
         print("hotcorners-per-monitor: config loaded for outputs:",
-              Object.keys(runtimeConfig.monitors).join(", ") || "(none)");
+              Object.keys(runtimeConfig.contexts || {}).join(", ") || "(none)");
     } catch (e) {
         print("hotcorners-per-monitor: failed to load config:", e);
-        runtimeConfig = {schemaVersion: SCHEMA_VERSION, monitors: {}};
+        runtimeConfig = {schemaVersion: RUNTIME_SCHEMA_VERSION, contexts: {}};
     }
 }
 
@@ -616,13 +714,11 @@ function handleCorner(positionName) {
     const outputName = screen.name;
     if (!outputName) return;
 
-    const monitor = runtimeConfig.monitors[outputName];
-    if (!monitor) return;
+    const contextKey = getCurrentContextKey(screen);
+    const binding = resolveContextAction(runtimeConfig, contextKey, outputName, positionName);
+    if (!binding) return;
 
-    const binding = monitor[positionName];
-    if (!binding || !isObject(binding)) return;
-
-    const action = binding.action;
+    const action = binding.tap;
     if (!isDispatchableAction(action)) return;
 
     const cooldownMs = binding.cooldownMs;
