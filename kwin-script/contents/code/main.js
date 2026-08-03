@@ -220,6 +220,107 @@ function createV2Binding(action, cooldownMs = DEFAULT_COOLDOWN_MS) {
     return {action: normalizedAction, cooldownMs};
 }
 
+function hasOwn(object, key) {
+    return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function clonePlain(value) {
+    if (Array.isArray(value)) {
+        return value.map(clonePlain);
+    }
+
+    if (isObject(value)) {
+        const clone = {};
+        for (const key of Object.keys(value)) {
+            clone[key] = clonePlain(value[key]);
+        }
+        return clone;
+    }
+
+    return value;
+}
+
+function classifyAction(action) {
+    if (!isObject(action) || typeof action.type !== "string") {
+        return "invalid";
+    }
+
+    if (action.type === "none") {
+        return "none";
+    }
+
+    if (action.type === "shortcut") {
+        if (typeof action.component === "string" && action.component &&
+            typeof action.name === "string" && action.name) {
+            return "shortcut";
+        }
+        return "invalid";
+    }
+
+    if (action.type === "command") {
+        return validateCommandAction(action).ok ? "command" : "invalid";
+    }
+
+    return "invalid";
+}
+
+function isResolvableBinding(binding) {
+    return isObject(binding) && classifyAction(binding.tap) !== "invalid";
+}
+
+function getContextBinding(context, outputName, position) {
+    if (!isObject(context) || !isObject(context.monitors)) {
+        return null;
+    }
+    if (typeof outputName !== "string" || !outputName ||
+        typeof position !== "string" || !position) {
+        return null;
+    }
+
+    if (!hasOwn(context.monitors, outputName)) {
+        return null;
+    }
+    const monitor = context.monitors[outputName];
+    if (!isObject(monitor) || !hasOwn(monitor, position)) {
+        return null;
+    }
+
+    const binding = monitor[position];
+    return isObject(binding) ? binding : null;
+}
+
+function resolveContextAction(config, contextKey, outputName, position) {
+    if (!isObject(config) || !isObject(config.contexts)) {
+        return null;
+    }
+    if (typeof contextKey !== "string" || !contextKey) {
+        return null;
+    }
+
+    const contexts = config.contexts;
+    const defaultContext = hasOwn(contexts, "default") ? contexts.default : null;
+
+    if (contextKey === "default") {
+        const binding = getContextBinding(defaultContext, outputName, position);
+        if (!isResolvableBinding(binding)) {
+            return null;
+        }
+        return clonePlain(binding);
+    }
+
+    const requestedContext = hasOwn(contexts, contextKey) ? contexts[contextKey] : null;
+    const exactBinding = getContextBinding(requestedContext, outputName, position);
+    if (isResolvableBinding(exactBinding)) {
+        return clonePlain(exactBinding);
+    }
+
+    const defaultBinding = getContextBinding(defaultContext, outputName, position);
+    if (!isResolvableBinding(defaultBinding)) {
+        return null;
+    }
+    return clonePlain(defaultBinding);
+}
+
 function decideCooldown(state, outputName, position, cooldownMs, nowMs) {
     if (!isObject(state) || !Array.isArray(state.entries)) {
         throw new TypeError("state.entries must be an array");
