@@ -154,6 +154,18 @@ msgstr "Opdrachtprogramma is ongeldig."
 msgid "Command arguments are invalid."
 msgstr "Opdrachtargumenten zijn ongeldig."
 
+#: config-gui/hotcorners_config.py:217 config-gui/hotcorners_config.py:938
+msgid "Cooldown"
+msgstr "Afkoeltijd"
+
+#: config-gui/hotcorners_config.py:218 config-gui/hotcorners_config.py:938
+msgid "Minimum time before this hot zone can trigger again."
+msgstr "Minimale tijd voordat deze hot zone opnieuw kan triggeren."
+
+#: config-gui/hotcorners_config.py:219 config-gui/hotcorners_config.py:1012
+msgid "Invalid cooldown value."
+msgstr "Ongeldige afkoeltijdwaarde."
+
 #: config-gui/hotcorners_config.py:540
 msgid "No action"
 msgstr "Geen actie"

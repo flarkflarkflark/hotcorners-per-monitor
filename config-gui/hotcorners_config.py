@@ -21,12 +21,15 @@ from uuid import uuid4
 
 from config_schema import (
     DEFAULT_COOLDOWN_MS,
+    MAX_COOLDOWN_MS,
     InvalidConfig,
     build_command_action,
     create_v2_binding,
     normalize_config_to_v2,
+    normalize_cooldown_ms,
     validate_command_arguments,
     validate_command_program,
+    validate_cooldown_ms,
 )
 from PyQt6.QtCore import Qt, QSize, QRect, pyqtSignal
 from PyQt6.QtGui import (
@@ -35,8 +38,8 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QDialogButtonBox, QFormLayout,
     QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QMainWindow, QMessageBox, QPushButton, QSizePolicy, QVBoxLayout,
-    QWidget, QInputDialog,
+    QMainWindow, QMessageBox, QPushButton, QSizePolicy, QSpinBox,
+    QVBoxLayout, QWidget, QInputDialog,
 )
 
 # -----------------------------------------------------------------------------
@@ -213,6 +216,9 @@ _("Command action runs the program with argv items exactly as listed.")
 _("Command program cannot be empty.")
 _("Command program is invalid.")
 _("Command arguments are invalid.")
+_("Cooldown")
+_("Minimum time before this hot zone can trigger again.")
+_("Invalid cooldown value.")
 
 def position_label(pos_id: str) -> str:
     for pid, label in POSITION_LAYOUT:
@@ -860,6 +866,7 @@ class MainWindow(QMainWindow):
         self.config_valid = loaded_config.document is not None
         self.config = loaded_config.document or normalize_config_to_v2({})
         self.current_selection = None  # (monitor_name, pos_id)
+        self._suppress_binding_signals = False
         self._build_ui()
         # Pre-select first corner so editor has something to show
         if self.monitors:
@@ -909,6 +916,21 @@ class MainWindow(QMainWindow):
         self.action_editor = ActionEditor(dict(NONE_ACTION))
         self.action_editor.actionChanged.connect(self._on_action_changed)
         editor_layout.addWidget(self.action_editor)
+
+        cooldown_row = QHBoxLayout()
+        cooldown_label = QLabel(_("Cooldown"))
+        self.cooldown_spin = QSpinBox()
+        self.cooldown_spin.setMinimum(0)
+        self.cooldown_spin.setMaximum(MAX_COOLDOWN_MS)
+        self.cooldown_spin.setSingleStep(50)
+        self.cooldown_spin.setSuffix(" ms")
+        self.cooldown_spin.setToolTip(_("Minimum time before this hot zone can trigger again."))
+        self.cooldown_spin.valueChanged.connect(self._on_cooldown_changed)
+        cooldown_row.addWidget(cooldown_label)
+        cooldown_row.addWidget(self.cooldown_spin)
+        cooldown_row.addStretch(1)
+        editor_layout.addLayout(cooldown_row)
+
         body_layout.addWidget(self.editor_box, 2)
 
         outer.addWidget(body, 1)
@@ -937,6 +959,37 @@ class MainWindow(QMainWindow):
         bl.addWidget(buttons)
         outer.addWidget(button_wrap)
 
+    def _current_binding(self):
+        if not self.current_selection:
+            return None
+        monitor_name, position_id = self.current_selection
+        return self.config["monitors"].get(monitor_name, {}).get(position_id)
+
+    def _ensure_current_binding(self):
+        if not self.current_selection:
+            return None
+        monitor_name, position_id = self.current_selection
+        monitors = self.config.setdefault("monitors", {})
+        monitor = monitors.setdefault(monitor_name, {})
+        binding = monitor.get(position_id)
+        if isinstance(binding, dict):
+            return binding
+
+        try:
+            binding = create_v2_binding(self.action_editor.current_action())
+        except InvalidConfig:
+            binding = {
+                "action": _clone_action(self.action_editor.current_action()),
+                "cooldownMs": DEFAULT_COOLDOWN_MS,
+            }
+        monitor[position_id] = binding
+        return binding
+
+    def _set_cooldown_widget(self, value):
+        self._suppress_binding_signals = True
+        self.cooldown_spin.setValue(int(value))
+        self._suppress_binding_signals = False
+
     def _on_corner_selected(self, monitor_name, position_id):
         self.current_selection = (monitor_name, position_id)
         mon = next(
@@ -954,50 +1007,68 @@ class MainWindow(QMainWindow):
             position_id, {}
         )
         action = binding.get("action", dict(NONE_ACTION))
+        cooldown_value = binding.get("cooldownMs", DEFAULT_COOLDOWN_MS)
+        cooldown_value = normalize_cooldown_ms(cooldown_value, DEFAULT_COOLDOWN_MS)
+
+        self._suppress_binding_signals = True
         self.action_editor.set_action(action)
+        self.cooldown_spin.setValue(cooldown_value)
+        self._suppress_binding_signals = False
 
     def _on_action_changed(self, action: dict):
+        if self._suppress_binding_signals:
+            return
         if not self.current_selection or not self.config_valid:
             return
-        monitor_name, position_id = self.current_selection
-        monitors = self.config["monitors"]
-        if action.get("type", "none") == "none":
-            if monitor_name in monitors:
-                monitors[monitor_name].pop(position_id, None)
-                if not monitors[monitor_name]:
-                    monitors.pop(monitor_name, None)
-        else:
-            monitor = monitors.setdefault(monitor_name, {})
-            binding = monitor.get(position_id)
-            if binding:
-                binding["action"] = _clone_action(action)
-            else:
-                try:
-                    monitor[position_id] = create_v2_binding(action)
-                except InvalidConfig:
-                    monitor[position_id] = {
-                        "action": _clone_action(action),
-                        "cooldownMs": DEFAULT_COOLDOWN_MS,
-                    }
+
+        binding = self._ensure_current_binding()
+        if binding is None:
+            return
+
+        binding["action"] = _clone_action(action)
+
+        current_cooldown = binding.get("cooldownMs", DEFAULT_COOLDOWN_MS)
+        binding["cooldownMs"] = normalize_cooldown_ms(current_cooldown, DEFAULT_COOLDOWN_MS)
+        self._set_cooldown_widget(binding["cooldownMs"])
+        self.canvas.set_config(self.config)
+
+    def _on_cooldown_changed(self, value: int):
+        if self._suppress_binding_signals:
+            return
+        if not self.current_selection or not self.config_valid:
+            return
+
+        binding = self._ensure_current_binding()
+        if binding is None:
+            return
+
+        binding["cooldownMs"] = int(value)
         self.canvas.set_config(self.config)
 
     def _validate_config_for_save(self):
         monitors = self.config.get("monitors", {})
-        for monitor_name, monitor in monitors.items():
+        for _monitor_name, monitor in monitors.items():
             if not isinstance(monitor, dict):
                 continue
-            for position_id, binding in monitor.items():
+            for _position_id, binding in monitor.items():
+                if _position_id not in POSITION_IDS:
+                    continue
                 if not isinstance(binding, dict):
                     continue
+
+                cooldown_ok, _cooldown_error = validate_cooldown_ms(binding.get("cooldownMs"))
+                if not cooldown_ok:
+                    return False, _("Invalid cooldown value.")
+
                 action = binding.get("action")
                 if not isinstance(action, dict):
                     continue
                 if action.get("type") != "command":
                     continue
 
-                program_ok, program_error = validate_command_program(action.get("program"))
+                program_ok, _program_error = validate_command_program(action.get("program"))
                 if not program_ok:
-                    return False, _("Command program cannot be empty.") if program_error == "invalid-program" else _("Command program is invalid.")
+                    return False, _("Command program cannot be empty.")
 
                 arguments_ok, _arguments_error = validate_command_arguments(action.get("arguments"))
                 if not arguments_ok:
@@ -1040,7 +1111,14 @@ class MainWindow(QMainWindow):
             mon, pos = self.current_selection
             binding = self.config["monitors"].get(mon, {}).get(pos, {})
             action = binding.get("action", dict(NONE_ACTION))
+            cooldown_value = normalize_cooldown_ms(
+                binding.get("cooldownMs", DEFAULT_COOLDOWN_MS),
+                DEFAULT_COOLDOWN_MS,
+            )
+            self._suppress_binding_signals = True
             self.action_editor.set_action(action)
+            self.cooldown_spin.setValue(cooldown_value)
+            self._suppress_binding_signals = False
 
 
 def main():

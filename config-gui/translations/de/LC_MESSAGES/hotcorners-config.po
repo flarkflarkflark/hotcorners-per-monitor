@@ -154,6 +154,18 @@ msgstr "Befehlsprogramm ist ungültig."
 msgid "Command arguments are invalid."
 msgstr "Befehlsargumente sind ungültig."
 
+#: config-gui/hotcorners_config.py:217 config-gui/hotcorners_config.py:938
+msgid "Cooldown"
+msgstr "Abkühlzeit"
+
+#: config-gui/hotcorners_config.py:218 config-gui/hotcorners_config.py:938
+msgid "Minimum time before this hot zone can trigger again."
+msgstr "Mindestzeit, bevor diese Hot-Zone erneut ausgelöst werden kann."
+
+#: config-gui/hotcorners_config.py:219 config-gui/hotcorners_config.py:1012
+msgid "Invalid cooldown value."
+msgstr "Ungültiger Abkühlzeitwert."
+
 #: config-gui/hotcorners_config.py:540
 msgid "No action"
 msgstr "Keine Aktion"

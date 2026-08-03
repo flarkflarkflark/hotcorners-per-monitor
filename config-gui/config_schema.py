@@ -135,6 +135,24 @@ def _valid_cooldown(value):
     )
 
 
+def validate_cooldown_ms(value):
+    if not _valid_cooldown(value):
+        return False, "invalid-cooldown"
+    return True, ""
+
+
+def normalize_cooldown_ms(value, default=DEFAULT_COOLDOWN_MS):
+    ok, _error = validate_cooldown_ms(value)
+    if ok:
+        return int(value)
+
+    default_ok, _default_error = validate_cooldown_ms(default)
+    if default_ok:
+        return int(default)
+
+    raise InvalidConfig("invalid cooldownMs")
+
+
 def create_v2_binding(action, cooldown_ms=DEFAULT_COOLDOWN_MS):
     """Create one validated v2 binding using the new-binding default."""
     normalized_action = _normalize_action(action)
@@ -144,7 +162,7 @@ def create_v2_binding(action, cooldown_ms=DEFAULT_COOLDOWN_MS):
         raise InvalidConfig("invalid cooldownMs")
     return {
         "action": normalized_action,
-        "cooldownMs": cooldown_ms,
+        "cooldownMs": int(cooldown_ms),
     }
 
 
@@ -183,7 +201,7 @@ def _normalize_monitors(monitors, *, legacy):
                 continue
             binding = deepcopy(value)
             binding["action"] = action
-            binding["cooldownMs"] = cooldown_ms
+            binding["cooldownMs"] = int(cooldown_ms)
             normalized_monitor[position] = binding
 
         normalized[output_name] = normalized_monitor
