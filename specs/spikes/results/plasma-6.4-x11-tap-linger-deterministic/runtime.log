@@ -1,0 +1,300 @@
+[10376.702321] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10376.702340] fedora kwin_x11[9735]: js: HCPM_GATE READY output=Virtual-1 geometry=0,0,1445x1005
+[10377.748183] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10377.757410] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10377.764763] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10377.823873] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10377.824149] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10377.824164] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10378.015137] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10378.713266] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10378.713281] fedora kwin_x11[9735]: js: HCPM_GATE READY output=Virtual-1 geometry=0,0,1445x1005
+[10379.172410] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10379.181885] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10379.191037] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10379.284812] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10379.786261] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"LINGER"}
+[10379.786300] fedora kwin_x11[9735]: js: HCPM_GATE ACTION LINGER counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10379.996724] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10380.006503] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10380.016319] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10380.025997] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10380.157527] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10380.273447] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10380.273504] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10380.273544] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10380.442251] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10380.451667] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10380.461665] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10380.471323] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10380.533736] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10380.707192] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,8
+[10381.039332] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"LINGER"}
+[10381.039364] fedora kwin_x11[9735]: js: HCPM_GATE ACTION LINGER counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10381.647087] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10381.654985] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10381.663550] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10381.671688] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10381.731414] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10381.887007] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10381.887242] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10381.887306] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10382.058325] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10382.067292] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10382.075007] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10382.082895] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10382.144802] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10382.210331] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER_DUP
+[10382.647702] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"LINGER"}
+[10382.647739] fedora kwin_x11[9735]: js: HCPM_GATE ACTION LINGER counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10382.942773] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10383.908302] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10383.908319] fedora kwin_x11[9735]: js: HCPM_GATE READY output=Virtual-1 geometry=0,0,1445x1005
+[10384.293874] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10384.302165] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10384.310323] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10384.374301] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10384.875843] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"LINGER"}
+[10384.875871] fedora kwin_x11[9735]: js: HCPM_GATE ACTION LINGER counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10385.862670] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10385.870864] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10385.879751] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10385.889241] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10385.949782] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10386.074281] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10386.244573] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":0,"DEF":0,"CTX":0}
+[10386.989376] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10386.989418] fedora kwin_x11[9735]: js: HCPM_GATE READY output=Virtual-1 geometry=0,0,1445x1005
+[10387.373498] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10387.381912] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10387.389985] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10387.449721] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10387.646381] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":0,"DEF":0,"CTX":0}
+[10388.395421] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10388.395443] fedora kwin_x11[9735]: js: HCPM_GATE READY output=Virtual-1 geometry=0,0,1445x1005
+[10389.051180] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10389.061092] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10389.069792] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10389.142522] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10389.410813] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"CTX"}
+[10389.410850] fedora kwin_x11[9735]: js: HCPM_GATE ACTION CTX counts={"TAP":0,"LINGER":0,"DEF":0,"CTX":1}
+[10389.555189] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":0,"DEF":0,"CTX":1}
+[10390.312308] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10390.312330] fedora kwin_x11[9735]: js: HCPM_GATE READY output=Virtual-1 geometry=0,0,1445x1005
+[10390.973456] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10390.981183] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10390.989024] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10391.050244] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10391.050537] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"DEF"}
+[10391.050567] fedora kwin_x11[9735]: js: HCPM_GATE ACTION DEF counts={"TAP":0,"LINGER":0,"DEF":1,"CTX":0}
+[10391.211440] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":0,"DEF":1,"CTX":0}
+[10391.952727] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10391.952743] fedora kwin_x11[9735]: js: HCPM_GATE READY output=Virtual-1 geometry=0,0,1445x1005
+[10392.549455] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10392.557616] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10392.566560] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10392.731607] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10393.093299] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":0,"DEF":0,"CTX":0}
+[10394.031439] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10394.031457] fedora kwin_x11[9735]: js: HCPM_GATE READY output=Virtual-1 geometry=0,0,1445x1005
+[10394.415466] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10394.424131] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10394.432642] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10394.494588] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10394.494813] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=500 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10394.495041] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10394.502305] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10394.502522] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=500 active=true action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10395.539061] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10395.539239] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=500 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10395.539319] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":2,"LINGER":0,"DEF":0,"CTX":0}
+[10395.704274] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=1 counts={"TAP":2,"LINGER":0,"DEF":0,"CTX":0}
+[10396.489189] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10396.489206] fedora kwin_x11[9735]: js: HCPM_GATE READY output=Virtual-1 geometry=0,0,1445x1005
+[10397.136893] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10397.146234] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10397.155672] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10397.216091] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10397.216259] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10397.216273] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10397.223368] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10397.223543] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10397.223585] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":2,"LINGER":0,"DEF":0,"CTX":0}
+[10397.231017] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10397.231149] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10397.231187] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":3,"LINGER":0,"DEF":0,"CTX":0}
+[10397.393834] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":3,"LINGER":0,"DEF":0,"CTX":0}
+[10398.324876] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10398.324898] fedora kwin_x11[9735]: js: HCPM_GATE READY output=Virtual-1 geometry=0,0,1445x1005
+[10398.706176] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10398.714419] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10398.722148] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10398.823794] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10398.996790] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10399.903440] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":0,"DEF":0,"CTX":0}
+[10399.912694] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10399.921966] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10399.930354] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10399.990544] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10400.128281] fedora kwin_x11[9735]: js: HCPM_GATE HOOK RELOAD
+[10400.905867] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":0,"DEF":0,"CTX":0}
+[10400.914665] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10400.923532] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10400.932273] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10400.993146] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10401.455154] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10401.455441] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10401.455464] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10401.643651] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10401.652144] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10401.661640] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10401.670253] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10401.730531] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10402.194881] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10402.195044] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10402.195111] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10402.341773] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10402.350860] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10402.359175] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10402.367014] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10402.444738] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10402.916705] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10402.916968] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10402.916991] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10403.254349] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10403.263774] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10403.272768] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10403.281920] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10403.342849] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10404.391235] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10404.391555] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10404.391613] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10404.521319] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10404.531523] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10404.542111] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10404.551595] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10404.617944] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10405.085091] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10405.085448] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10405.085474] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10405.269689] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10405.278604] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10405.286979] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10405.295228] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10405.357036] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10405.821054] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10405.821108] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10405.821126] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10406.016957] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10406.026009] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10406.034638] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10406.044173] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10406.107682] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10406.575391] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10406.575472] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10406.575503] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10406.705321] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10406.713783] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10406.722359] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10406.729939] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10406.805889] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10407.283605] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10407.283723] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10407.283743] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10407.649144] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10407.658449] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10407.668299] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10407.676744] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10407.739098] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10408.279142] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10408.279203] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10408.279224] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10408.423382] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10408.434145] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10408.443404] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10408.451684] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10408.517425] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10408.996189] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10408.996267] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"TAP"}
+[10408.996291] fedora kwin_x11[9735]: js: HCPM_GATE ACTION TAP counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10409.126805] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":1,"LINGER":0,"DEF":0,"CTX":0}
+[10409.137349] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10409.148117] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10409.158074] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10409.221751] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10409.726332] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"LINGER"}
+[10409.726364] fedora kwin_x11[9735]: js: HCPM_GATE ACTION LINGER counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10409.911346] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10410.003837] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10410.011574] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10410.019636] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10410.026775] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10410.087113] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10410.676886] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"LINGER"}
+[10410.676912] fedora kwin_x11[9735]: js: HCPM_GATE ACTION LINGER counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10410.693289] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10410.809758] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10410.816936] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10410.825139] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10410.832286] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10410.892432] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10411.544331] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"LINGER"}
+[10411.544366] fedora kwin_x11[9735]: js: HCPM_GATE ACTION LINGER counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10411.550308] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10411.641282] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10411.648875] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10411.656789] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10411.664219] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10411.723889] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10412.259236] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"LINGER"}
+[10412.259257] fedora kwin_x11[9735]: js: HCPM_GATE ACTION LINGER counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10412.294395] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10412.410907] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10412.419257] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10412.427022] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10412.435265] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10412.497013] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10413.072535] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"LINGER"}
+[10413.072565] fedora kwin_x11[9735]: js: HCPM_GATE ACTION LINGER counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10413.082722] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10413.363262] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10413.371519] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10413.380921] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10413.390082] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10413.514667] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10414.077992] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"LINGER"}
+[10414.078034] fedora kwin_x11[9735]: js: HCPM_GATE ACTION LINGER counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10414.110937] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10414.213781] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10414.222306] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10414.231206] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10414.240169] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10414.308653] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10414.810628] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"LINGER"}
+[10414.810665] fedora kwin_x11[9735]: js: HCPM_GATE ACTION LINGER counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10414.878392] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10414.968563] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10414.976372] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10414.985421] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10414.995682] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10415.165209] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10415.666257] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"LINGER"}
+[10415.666281] fedora kwin_x11[9735]: js: HCPM_GATE ACTION LINGER counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10415.819675] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10415.914222] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10415.922736] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10415.931193] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10415.940352] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10416.010009] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10416.543338] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"LINGER"}
+[10416.543369] fedora kwin_x11[9735]: js: HCPM_GATE ACTION LINGER counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10416.621027] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10416.711583] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10416.719300] fedora kwin_x11[9735]: js: HCPM_GATE HOOK CLEANUP
+[10416.726315] fedora kwin_x11[9735]: js: HCPM_GATE counts-reset
+[10416.733903] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,0
+[10416.795834] fedora kwin_x11[9735]: js: HCPM_GATE HOOK ENTER
+[10417.346110] fedora kwin_x11[9735]: js: HCPM_GATE dispatch-check output=Virtual-1 position=Top cooldownMs=0 active=false action={"type":"shortcut","component":"hcpm-gate","name":"LINGER"}
+[10417.346190] fedora kwin_x11[9735]: js: HCPM_GATE ACTION LINGER counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}
+[10417.366923] fedora kwin_x11[9735]: js: HCPM_GATE cursor=722,9
+[10417.460788] fedora kwin_x11[9735]: js: HCPM_GATE status pending=0 cooldowns=0 counts={"TAP":0,"LINGER":1,"DEF":0,"CTX":0}

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 2,
+  "monitors": {
+    "DP-1": {
+      "TopLeft": {
+        "action": {
+          "type": "shortcut",
+          "component": "kwin",
+          "name": "Overview"
+        },
+        "cooldownMs": 0
+      },
+      "BottomRight": {
+        "action": {
+          "type": "none"
+        },
+        "cooldownMs": 0
+      }
+    },
+    "HDMI-A-1": {
+      "TopRight": {
+        "action": {
+          "type": "shortcut",
+          "component": "ksmserver",
+          "name": "Lock Session"
+        },
+        "cooldownMs": 0
+      }
+    }
+  }
+}

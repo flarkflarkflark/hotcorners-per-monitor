@@ -1,0 +1,15 @@
+{
+  "none": {
+    "type": "none"
+  },
+  "builtinShortcut": {
+    "type": "shortcut",
+    "component": "kwin",
+    "name": "Overview"
+  },
+  "customShortcut": {
+    "type": "shortcut",
+    "component": "ksmserver",
+    "name": "Lock Session"
+  }
+}

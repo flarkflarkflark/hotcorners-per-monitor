@@ -1,0 +1,17 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Hot Corners Per Monitor contributors"
+            }
+        ],
+        "Description": "Isolated QTimer capability probe; not production code.",
+        "Id": "hotcorners-per-monitor-qtimer-probe",
+        "License": "GPL-3.0-or-later",
+        "Name": "Hot Corners Per Monitor QTimer Probe",
+        "Version": "0.1.0"
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js"
+}

@@ -1,0 +1,19 @@
+{
+  "DP-1": {
+    "TopLeft": {
+      "type": "shortcut",
+      "component": "kwin",
+      "name": "Overview"
+    },
+    "BottomRight": {
+      "type": "none"
+    }
+  },
+  "HDMI-A-1": {
+    "TopRight": {
+      "type": "shortcut",
+      "component": "ksmserver",
+      "name": "Lock Session"
+    }
+  }
+}

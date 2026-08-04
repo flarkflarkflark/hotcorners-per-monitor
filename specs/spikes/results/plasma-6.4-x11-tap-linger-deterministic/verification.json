@@ -1,0 +1,19 @@
+{
+  "status": "PASS",
+  "runtime_log_lines": 300,
+  "status_samples": 36,
+  "action_lines": 34,
+  "tap_actions": 18,
+  "linger_actions": 14,
+  "default_actions": 1,
+  "context_actions": 1,
+  "duplicate_tap_linger_detected": false,
+  "note": "Case-by-case assertions are derived by the shell harness in summary.txt; raw monotonic evidence is runtime.log.",
+  "assertion_failures": 0,
+  "formal_scope": "Deterministic live KWin runtime gate from handleCorner() onward; physical screen-edge ingress is excluded and must remain a separate smoke gate.",
+  "race_samples": 20,
+  "race_tap_winners": 10,
+  "race_linger_winners": 10,
+  "race_invalid_or_duplicate": 0,
+  "race_invariant": "exactly one of TAP or LINGER; event-loop ordering selects the winner near the threshold"
+}

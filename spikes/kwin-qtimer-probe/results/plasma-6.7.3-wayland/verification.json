@@ -1,0 +1,47 @@
+{
+  "capabilities": {
+    "cleanupUnload": true,
+    "constructor": true,
+    "independentTimers": true,
+    "preciseTimerReadback": true,
+    "restartResetsDeadline": true,
+    "singleShot": true,
+    "stopCancel": true,
+    "timeoutConnection": true,
+    "zeroIntervalFiresOnce": true
+  },
+  "fatalMarkers": [],
+  "intervals": {
+    "350": {
+      "duplicateCallbacks": 0,
+      "earlyCallbacks": 0,
+      "expected": 20,
+      "maximumMs": 350.57500000402797,
+      "meanMs": 350.38294999903883,
+      "measured": 20,
+      "medianMs": 350.3689999997732,
+      "minimumMs": 350.256999998237,
+      "missingCallbacks": 0,
+      "overFiveSecondsLate": 0,
+      "pass": true,
+      "requestedMs": 350
+    },
+    "500": {
+      "duplicateCallbacks": 0,
+      "earlyCallbacks": 0,
+      "expected": 20,
+      "maximumMs": 500.65400000312366,
+      "meanMs": 500.4993000002287,
+      "measured": 20,
+      "medianMs": 500.4915000026813,
+      "minimumMs": 500.36099999852013,
+      "missingCallbacks": 0,
+      "overFiveSecondsLate": 0,
+      "pass": true,
+      "requestedMs": 500
+    }
+  },
+  "markerCount": 144,
+  "restartElapsedFromRestartMs": 350.8600000059232,
+  "status": "PASS"
+}

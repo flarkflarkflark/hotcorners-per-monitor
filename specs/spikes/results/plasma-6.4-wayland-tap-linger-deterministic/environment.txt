@@ -1,0 +1,9 @@
+session_type=wayland
+desktop=KDE
+kwin=kwin 6.4.5
+plasmashell=plasmashell 6.4.5
+output=Virtual-1
+package_id=hotcorners-per-monitor-gate
+source_root=/home/vm/src/hotcorners-per-monitor-with-deterministic-gate-v3
+backup_dir=/home/vm/tap-linger-gate-backup/deterministic-20260803-225121
+guest_repository_unit_tests=NOT_RUN

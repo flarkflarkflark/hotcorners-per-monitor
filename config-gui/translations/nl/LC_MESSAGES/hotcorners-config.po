@@ -6,9 +6,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: hotcorners-config 0.1.0\n"
-"Report-Msgid-Bugs-To: https://github.com/flarkflarkflark/hotcorners-per-"
-"monitor/issues\n"
-"POT-Creation-Date: 2026-05-20 20:27+0000\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-03 14:53+0200\n"
 "PO-Revision-Date: 2026-05-20 12:00+0200\n"
 "Last-Translator: flark\n"
 "Language-Team: Dutch\n"
@@ -17,135 +16,295 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: hotcorners_config.py:115
+#: config-gui/hotcorners_config.py:192
 msgid "Overview (show all windows)"
 msgstr "Overview (alle vensters tonen)"
 
-#: hotcorners_config.py:116
+#: config-gui/hotcorners_config.py:193
 msgid "Grid View (virtual desktops)"
 msgstr "Rasterweergave (virtuele bureaubladen)"
 
-#: hotcorners_config.py:117
+#: config-gui/hotcorners_config.py:194
 msgid "Show Desktop"
 msgstr "Bureaublad tonen"
 
-#: hotcorners_config.py:118
+#: config-gui/hotcorners_config.py:195
 msgid "Cycle Overview / Grid"
 msgstr "Wissel tussen Overview / Raster"
 
-#: hotcorners_config.py:119
+#: config-gui/hotcorners_config.py:196
 msgid "Maximize active window"
 msgstr "Actief venster maximaliseren"
 
-#: hotcorners_config.py:120
+#: config-gui/hotcorners_config.py:197
 msgid "Minimize active window"
 msgstr "Actief venster minimaliseren"
 
-#: hotcorners_config.py:121
+#: config-gui/hotcorners_config.py:198
 msgid "Close active window"
 msgstr "Actief venster sluiten"
 
-#: hotcorners_config.py:122
+#: config-gui/hotcorners_config.py:199
 msgid "Edit tile layout"
 msgstr "Tegelindeling bewerken"
 
-#: hotcorners_config.py:123
+#: config-gui/hotcorners_config.py:200
 msgid "Application launcher"
 msgstr "Toepassingsstarter"
 
-#: hotcorners_config.py:124
+#: config-gui/hotcorners_config.py:201
 msgid "Show plasma menu at cursor"
 msgstr "Plasma-menu tonen bij cursor"
 
-#: hotcorners_config.py:125
+#: config-gui/hotcorners_config.py:202
 msgid "Lock screen"
 msgstr "Scherm vergrendelen"
 
-#: hotcorners_config.py:126
+#: config-gui/hotcorners_config.py:203
 msgid "Log out…"
 msgstr "Afmelden…"
 
-#: hotcorners_config.py:144
+#: config-gui/hotcorners_config.py:221
 msgid "Top-left"
 msgstr "Linksboven"
 
-#: hotcorners_config.py:144
+#: config-gui/hotcorners_config.py:221
 msgid "Top"
 msgstr "Boven"
 
-#: hotcorners_config.py:144
+#: config-gui/hotcorners_config.py:221
 msgid "Top-right"
 msgstr "Rechtsboven"
 
-#: hotcorners_config.py:144
+#: config-gui/hotcorners_config.py:221
 msgid "Left"
 msgstr "Links"
 
-#: hotcorners_config.py:144
+#: config-gui/hotcorners_config.py:221
 msgid "Right"
 msgstr "Rechts"
 
-#: hotcorners_config.py:145
+#: config-gui/hotcorners_config.py:222
 msgid "Bottom-left"
 msgstr "Linksonder"
 
-#: hotcorners_config.py:145
+#: config-gui/hotcorners_config.py:222
 msgid "Bottom"
 msgstr "Onder"
 
-#: hotcorners_config.py:145
+#: config-gui/hotcorners_config.py:222
 msgid "Bottom-right"
 msgstr "Rechtsonder"
 
-#: hotcorners_config.py:410
+#: config-gui/hotcorners_config.py:223 config-gui/hotcorners_config.py:865
+#: config-gui/hotcorners_config.py:1358
+msgid "Command"
+msgstr "Opdracht"
+
+#: config-gui/hotcorners_config.py:223 config-gui/hotcorners_config.py:891
+msgid "Program"
+msgstr "Programma"
+
+#: config-gui/hotcorners_config.py:223 config-gui/hotcorners_config.py:896
+msgid "Arguments"
+msgstr "Argumenten"
+
+#: config-gui/hotcorners_config.py:224 config-gui/hotcorners_config.py:904
+msgid "Add"
+msgstr "Toevoegen"
+
+#: config-gui/hotcorners_config.py:224 config-gui/hotcorners_config.py:905
+msgid "Edit"
+msgstr "Bewerken"
+
+#: config-gui/hotcorners_config.py:224 config-gui/hotcorners_config.py:906
+msgid "Remove"
+msgstr "Verwijderen"
+
+#: config-gui/hotcorners_config.py:224 config-gui/hotcorners_config.py:907
+msgid "Move Up"
+msgstr "Omhoog"
+
+#: config-gui/hotcorners_config.py:224 config-gui/hotcorners_config.py:908
+msgid "Move Down"
+msgstr "Omlaag"
+
+#: config-gui/hotcorners_config.py:225 config-gui/hotcorners_config.py:1079
+#: config-gui/hotcorners_config.py:1090
+msgid "Argument"
+msgstr "Argument"
+
+#: config-gui/hotcorners_config.py:226 config-gui/hotcorners_config.py:1079
+#: config-gui/hotcorners_config.py:1091
+msgid "Enter argument value:"
+msgstr "Voer argumentwaarde in:"
+
+#: config-gui/hotcorners_config.py:227 config-gui/hotcorners_config.py:1137
+msgid "Command action runs the program with argv items exactly as listed."
+msgstr ""
+"De opdrachtactie start het programma met argv-items exact zoals getoond."
+
+#: config-gui/hotcorners_config.py:228 config-gui/hotcorners_config.py:1804
+msgid "Command program cannot be empty."
+msgstr "Opdrachtprogramma mag niet leeg zijn."
+
+#: config-gui/hotcorners_config.py:229
+msgid "Command program is invalid."
+msgstr "Opdrachtprogramma is ongeldig."
+
+#: config-gui/hotcorners_config.py:230 config-gui/hotcorners_config.py:1808
+msgid "Command arguments are invalid."
+msgstr "Opdrachtargumenten zijn ongeldig."
+
+#: config-gui/hotcorners_config.py:231 config-gui/hotcorners_config.py:1272
+msgid "Cooldown"
+msgstr "Afkoeltijd"
+
+#: config-gui/hotcorners_config.py:232 config-gui/hotcorners_config.py:1278
+msgid "Minimum time before this hot zone can trigger again."
+msgstr "Minimale tijd voordat deze hot zone opnieuw kan triggeren."
+
+#: config-gui/hotcorners_config.py:233 config-gui/hotcorners_config.py:1777
+#: config-gui/hotcorners_config.py:1794
+msgid "Invalid cooldown value."
+msgstr "Ongeldige afkoeltijdwaarde."
+
+#: config-gui/hotcorners_config.py:234 config-gui/hotcorners_config.py:568
+#: config-gui/hotcorners_config.py:583
+msgid "Context"
+msgstr "Context"
+
+#: config-gui/hotcorners_config.py:235 config-gui/hotcorners_config.py:259
+#: config-gui/hotcorners_config.py:272
+msgid "Default"
+msgstr "Standaard"
+
+#: config-gui/hotcorners_config.py:236 config-gui/hotcorners_config.py:260
+#: config-gui/hotcorners_config.py:579
+msgid "Activity"
+msgstr "Activiteit"
+
+#: config-gui/hotcorners_config.py:237 config-gui/hotcorners_config.py:261
+#: config-gui/hotcorners_config.py:580
+msgid "Desktop"
+msgstr "Bureaublad"
+
+#: config-gui/hotcorners_config.py:238 config-gui/hotcorners_config.py:262
+#: config-gui/hotcorners_config.py:581
+msgid "Activity + Desktop"
+msgstr "Activiteit + bureaublad"
+
+#: config-gui/hotcorners_config.py:239 config-gui/hotcorners_config.py:1246
+msgid "Add Context"
+msgstr "Context toevoegen"
+
+#: config-gui/hotcorners_config.py:240 config-gui/hotcorners_config.py:1247
+msgid "Edit Context"
+msgstr "Context bewerken"
+
+#: config-gui/hotcorners_config.py:241 config-gui/hotcorners_config.py:1248
+#: config-gui/hotcorners_config.py:1552
+msgid "Remove Context"
+msgstr "Context verwijderen"
+
+#: config-gui/hotcorners_config.py:242 config-gui/hotcorners_config.py:1355
+msgid "Inherit from Default"
+msgstr "Overnemen van standaard"
+
+#: config-gui/hotcorners_config.py:243 config-gui/hotcorners_config.py:586
+#: config-gui/hotcorners_config.py:587
+msgid "Activity ID"
+msgstr "Activiteits-ID"
+
+#: config-gui/hotcorners_config.py:244 config-gui/hotcorners_config.py:591
+#: config-gui/hotcorners_config.py:592
+msgid "Desktop ID"
+msgstr "Bureaublad-ID"
+
+#: config-gui/hotcorners_config.py:245 config-gui/hotcorners_config.py:1498
+#: config-gui/hotcorners_config.py:1538
+msgid "A context with this identifier already exists."
+msgstr "Er bestaat al een context met deze identificatie."
+
+#: config-gui/hotcorners_config.py:246 config-gui/hotcorners_config.py:1548
+msgid "The default context cannot be removed."
+msgstr "De standaardcontext kan niet worden verwijderd."
+
+#: config-gui/hotcorners_config.py:247 config-gui/hotcorners_config.py:1553
+msgid "Remove this context?"
+msgstr "Deze context verwijderen?"
+
+#: config-gui/hotcorners_config.py:248 config-gui/hotcorners_config.py:1493
+#: config-gui/hotcorners_config.py:1533 config-gui/hotcorners_config.py:1752
+#: config-gui/hotcorners_config.py:1761 config-gui/hotcorners_config.py:1763
+#: config-gui/hotcorners_config.py:1766 config-gui/hotcorners_config.py:1780
+msgid "Invalid context identifier."
+msgstr "Ongeldige contextidentificatie."
+
+#: config-gui/hotcorners_config.py:275
+#, python-brace-format
+msgid "Activity: {activity_id}"
+msgstr "Activiteit: {activity_id}"
+
+#: config-gui/hotcorners_config.py:278
+#, python-brace-format
+msgid "Desktop: {desktop_id}"
+msgstr "Bureaublad: {desktop_id}"
+
+#: config-gui/hotcorners_config.py:283
+#, python-brace-format
+msgid "Activity + Desktop: {activity_id} / {desktop_id}"
+msgstr "Activiteit + bureaublad: {activity_id} / {desktop_id}"
+
+#: config-gui/hotcorners_config.py:863 config-gui/hotcorners_config.py:1356
 msgid "No action"
 msgstr "Geen actie"
 
-#: hotcorners_config.py:411
+#: config-gui/hotcorners_config.py:864 config-gui/hotcorners_config.py:1357
 msgid "Trigger shortcut"
 msgstr "Sneltoets uitvoeren"
 
-#: hotcorners_config.py:413
+#: config-gui/hotcorners_config.py:867
 msgid "Action:"
 msgstr "Actie:"
 
-#: hotcorners_config.py:418
+#: config-gui/hotcorners_config.py:872
 msgid "Custom shortcut…"
 msgstr "Aangepaste sneltoets…"
 
-#: hotcorners_config.py:420
+#: config-gui/hotcorners_config.py:874
 msgid "Shortcut:"
 msgstr "Sneltoets:"
 
-#: hotcorners_config.py:424
+#: config-gui/hotcorners_config.py:878
 msgid "e.g. kwin"
 msgstr "bijv. kwin"
 
-#: hotcorners_config.py:426
+#: config-gui/hotcorners_config.py:880
 msgid "Component:"
 msgstr "Component:"
 
-#: hotcorners_config.py:430
+#: config-gui/hotcorners_config.py:884
 msgid "e.g. Overview"
 msgstr "bijv. Overview"
 
-#: hotcorners_config.py:432
+#: config-gui/hotcorners_config.py:886
 msgid "Shortcut name:"
 msgstr "Sneltoetsnaam:"
 
-#: hotcorners_config.py:528
+#: config-gui/hotcorners_config.py:1126
 msgid "Pushing the cursor against this corner/edge does nothing."
 msgstr "De cursor tegen deze hoek/rand duwen doet niets."
 
-#: hotcorners_config.py:532
+#: config-gui/hotcorners_config.py:1130
 msgid ""
-"Find shortcut names with: <code>qdbus6 org.kde.kglobalaccel /component/&lt;"
-"component&gt; org.kde.kglobalaccel.Component.shortcutNames</code>"
+"Find shortcut names with: <code>qdbus6 org.kde.kglobalaccel /component/"
+"&lt;component&gt; org.kde.kglobalaccel.Component.shortcutNames</code>"
 msgstr ""
-"Vind sneltoetsnamen via: <code>qdbus6 org.kde.kglobalaccel /component/&lt;"
-"component&gt; org.kde.kglobalaccel.Component.shortcutNames</code>"
+"Vind sneltoetsnamen via: <code>qdbus6 org.kde.kglobalaccel /component/"
+"&lt;component&gt; org.kde.kglobalaccel.Component.shortcutNames</code>"
 
-#: hotcorners_config.py:539
+#: config-gui/hotcorners_config.py:1141
 msgid ""
 "The selected shortcut will be invoked when the cursor is pushed against this "
 "corner/edge."
@@ -153,11 +312,11 @@ msgstr ""
 "De gekozen sneltoets wordt uitgevoerd wanneer de cursor tegen deze hoek/rand "
 "wordt geduwd."
 
-#: hotcorners_config.py:557
+#: config-gui/hotcorners_config.py:1177
 msgid "Hot Corners Per Monitor"
 msgstr "Hot Corners per Monitor"
 
-#: hotcorners_config.py:577
+#: config-gui/hotcorners_config.py:1208
 msgid ""
 "<b>Tip:</b> Disable the standard KDE hot corners in System Settings → Screen "
 "Edges before relying on this script, otherwise both will fire."
@@ -165,47 +324,50 @@ msgstr ""
 "<b>Tip:</b> Schakel de standaard KDE hot corners eerst uit in "
 "Systeeminstellingen → Schermranden, anders triggeren beide tegelijk."
 
-#: hotcorners_config.py:595
+#: config-gui/hotcorners_config.py:1226
 msgid "Monitor arrangement — click a corner or edge to configure"
 msgstr "Monitor-indeling — klik op een hoek of rand om te configureren"
 
-#: hotcorners_config.py:605
+#: config-gui/hotcorners_config.py:1236
 msgid "Select a corner above"
 msgstr "Kies een hoek hierboven"
 
-#: hotcorners_config.py:625
+#: config-gui/hotcorners_config.py:1298
 msgid "Reload from disk"
 msgstr "Opnieuw inladen"
 
-#: hotcorners_config.py:628
+#: config-gui/hotcorners_config.py:1301
 msgid "Close"
 msgstr "Sluiten"
 
-#: hotcorners_config.py:631
+#: config-gui/hotcorners_config.py:1304
 msgid "Apply"
 msgstr "Toepassen"
 
-#: hotcorners_config.py:649
+#: config-gui/hotcorners_config.py:1493 config-gui/hotcorners_config.py:1498
+#: config-gui/hotcorners_config.py:1533 config-gui/hotcorners_config.py:1538
+#: config-gui/hotcorners_config.py:1548 config-gui/hotcorners_config.py:1816
+#: config-gui/hotcorners_config.py:1832
+msgid "Save failed"
+msgstr "Opslaan mislukt"
+
+#: config-gui/hotcorners_config.py:1652 config-gui/hotcorners_config.py:1660
 #, python-brace-format
 msgid "{position} of {monitor}"
 msgstr "{position} van {monitor}"
 
-#: hotcorners_config.py:674
+#: config-gui/hotcorners_config.py:1826
 msgid "Saved"
 msgstr "Opgeslagen"
 
-#: hotcorners_config.py:675
+#: config-gui/hotcorners_config.py:1827
 msgid ""
 "Configuration saved. KWin has been reloaded — your changes are active now."
 msgstr ""
 "Configuratie opgeslagen. KWin is opnieuw geladen — je wijzigingen zijn nu "
 "actief."
 
-#: hotcorners_config.py:680
-msgid "Save failed"
-msgstr "Opslaan mislukt"
-
-#: hotcorners_config.py:681
+#: config-gui/hotcorners_config.py:1833
 msgid ""
 "Could not write the configuration. Check that kwriteconfig6 is available on "
 "your system."
