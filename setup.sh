@@ -209,6 +209,7 @@ say "Installing configuration GUI"
 
 mkdir -p "${LIB_DIR}"
 cp "${SCRIPT_DIR}/config-gui/hotcorners_config.py" "${LIB_DIR}/"
+cp "${SCRIPT_DIR}/config-gui/config_schema.py" "${LIB_DIR}/"
 ok "GUI installed to ${LIB_DIR}"
 
 mkdir -p "${BIN_DIR}"
