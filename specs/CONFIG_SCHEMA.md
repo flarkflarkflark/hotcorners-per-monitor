@@ -110,7 +110,7 @@ Binding rules:
 
 - `tap` is required and may be `none`.
 - `linger` is optional. Missing `linger` means immediate tap dispatch on activation.
-- When `linger` exists, `lingerMs` is required and ranges from 100 through 5000; new bindings default to 500.
+- When `linger` exists, `lingerMs` is required and ranges from 100 through 10000; new bindings default to 500.
 - `cooldownMs` is required and ranges from 0 through 10000.
 - v2 bindings migrate into `contexts.default`, mapping `action` to `tap` and preserving `cooldownMs` exactly.
 

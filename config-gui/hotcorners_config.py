@@ -22,7 +22,10 @@ from uuid import uuid4
 
 from config_schema import (
     DEFAULT_COOLDOWN_MS,
+    DEFAULT_LINGER_MS,
     MAX_COOLDOWN_MS,
+    MAX_LINGER_MS,
+    MIN_LINGER_MS,
     InvalidConfig,
     build_context_key,
     build_command_action,
@@ -31,10 +34,12 @@ from config_schema import (
     normalize_config_to_v3,
     normalize_action,
     normalize_cooldown_ms,
+    normalize_linger_ms,
     validate_command_arguments,
     validate_command_program,
     validate_cooldown_ms,
     validate_context_metadata,
+    validate_linger_ms,
 )
 from PyQt6.QtCore import Qt, QSize, QRect, pyqtSignal
 from PyQt6.QtGui import (
@@ -43,7 +48,7 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
     QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QMainWindow, QMessageBox, QPushButton, QSizePolicy, QSpinBox,
+    QMainWindow, QMessageBox, QPushButton, QScrollArea, QSizePolicy, QSpinBox,
     QVBoxLayout, QWidget, QInputDialog,
 )
 
@@ -231,6 +236,11 @@ _("Command arguments are invalid.")
 _("Cooldown")
 _("Minimum time before this hot zone can trigger again.")
 _("Invalid cooldown value.")
+_("Tap")
+_("Linger")
+_("Linger delay")
+_("Time the cursor must stay before the linger action runs instead of the tap action.")
+_("Invalid linger delay value.")
 _("Context")
 _("Default")
 _("Activity")
@@ -407,15 +417,29 @@ def get_default_v3_binding(config: dict, monitor_name: str, position_id: str) ->
     return get_context_binding(config, "default", monitor_name, position_id)
 
 
-def create_v3_binding(tap: dict, cooldown_ms: int = DEFAULT_COOLDOWN_MS, preserved: dict | None = None) -> dict:
+def create_v3_binding(
+        tap: dict,
+        cooldown_ms: int = DEFAULT_COOLDOWN_MS,
+        preserved: dict | None = None,
+        linger: dict | None = None,
+        linger_ms: int = DEFAULT_LINGER_MS,
+) -> dict:
     normalized_tap = normalize_action(tap)
     if normalized_tap is None:
         raise InvalidConfig("invalid action")
     if not validate_cooldown_ms(cooldown_ms)[0]:
         raise InvalidConfig("invalid cooldownMs")
 
+    normalized_linger = normalize_action(linger if linger is not None else NONE_ACTION)
+    if normalized_linger is None:
+        raise InvalidConfig("invalid linger action")
+    if not validate_linger_ms(linger_ms)[0]:
+        raise InvalidConfig("invalid lingerMs")
+
     binding = copy.deepcopy(preserved) if isinstance(preserved, dict) else {}
     binding["tap"] = normalized_tap
+    binding["linger"] = normalized_linger
+    binding["lingerMs"] = int(linger_ms)
     binding["cooldownMs"] = int(cooldown_ms)
     return binding
 
@@ -1230,7 +1254,7 @@ class MainWindow(QMainWindow):
 
         self.canvas = MonitorCanvas(self.monitors, self.config)
         self.canvas.cornerSelected.connect(self._on_corner_selected)
-        body_layout.addWidget(self.canvas, 3)
+        body_layout.addWidget(self.canvas, 2)
 
         # Editor box
         self.editor_box = QGroupBox(_("Select a corner above"))
@@ -1264,9 +1288,45 @@ class MainWindow(QMainWindow):
             self.remove_context_btn = None
             self.binding_state_combo = None
 
-        self.action_editor = ActionEditor(dict(NONE_ACTION))
-        self.action_editor.actionChanged.connect(self._on_action_changed)
-        editor_layout.addWidget(self.action_editor)
+        if self.is_v3:
+            tap_group = QGroupBox(_("Tap"))
+            tap_layout = QVBoxLayout(tap_group)
+            self.action_editor = ActionEditor(dict(NONE_ACTION))
+            self.action_editor.actionChanged.connect(self._on_action_changed)
+            tap_layout.addWidget(self.action_editor)
+            editor_layout.addWidget(tap_group)
+
+            linger_group = QGroupBox(_("Linger"))
+            linger_layout = QVBoxLayout(linger_group)
+            self.linger_action_editor = ActionEditor(dict(NONE_ACTION))
+            self.linger_action_editor.actionChanged.connect(self._on_linger_action_changed)
+            linger_layout.addWidget(self.linger_action_editor)
+
+            linger_delay_row = QHBoxLayout()
+            linger_delay_label = QLabel(_("Linger delay"))
+            self.linger_delay_spin = QSpinBox()
+            self.linger_delay_spin.setMinimum(MIN_LINGER_MS)
+            self.linger_delay_spin.setMaximum(MAX_LINGER_MS)
+            self.linger_delay_spin.setSingleStep(50)
+            self.linger_delay_spin.setSuffix(" ms")
+            self.linger_delay_spin.setToolTip(_(
+                "Time the cursor must stay before the linger action runs instead of the tap action."
+            ))
+            self.linger_delay_spin.valueChanged.connect(self._on_linger_delay_changed)
+            linger_delay_row.addWidget(linger_delay_label)
+            linger_delay_row.addWidget(self.linger_delay_spin)
+            linger_delay_row.addStretch(1)
+            linger_layout.addLayout(linger_delay_row)
+
+            editor_layout.addWidget(linger_group)
+        else:
+            # Legacy (v1/v2) bindings have no tap/linger distinction — keep
+            # the previous neutral presentation instead of the v3 grouping.
+            self.action_editor = ActionEditor(dict(NONE_ACTION))
+            self.action_editor.actionChanged.connect(self._on_action_changed)
+            editor_layout.addWidget(self.action_editor)
+            self.linger_action_editor = None
+            self.linger_delay_spin = None
 
         cooldown_row = QHBoxLayout()
         cooldown_label = QLabel(_("Cooldown"))
@@ -1282,7 +1342,13 @@ class MainWindow(QMainWindow):
         cooldown_row.addStretch(1)
         editor_layout.addLayout(cooldown_row)
 
-        body_layout.addWidget(self.editor_box, 2)
+        self.editor_scroll = QScrollArea()
+        self.editor_scroll.setWidget(self.editor_box)
+        self.editor_scroll.setWidgetResizable(True)
+        self.editor_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.editor_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.editor_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        body_layout.addWidget(self.editor_scroll, 3)
 
         outer.addWidget(body, 1)
 
@@ -1363,6 +1429,8 @@ class MainWindow(QMainWindow):
 
     def _set_v3_controls_enabled(self, enabled: bool):
         self.action_editor.setEnabled(enabled)
+        self.linger_action_editor.setEnabled(enabled)
+        self.linger_delay_spin.setEnabled(enabled)
         self.cooldown_spin.setEnabled(enabled)
         self.edit_context_btn.setEnabled(enabled and self.active_context_key != "default")
         self.remove_context_btn.setEnabled(enabled and self.active_context_key != "default")
@@ -1419,6 +1487,8 @@ class MainWindow(QMainWindow):
                 preview = {"tap": dict(NONE_ACTION), "cooldownMs": DEFAULT_COOLDOWN_MS}
             self._suppress_binding_signals = True
             self.action_editor.set_action(preview.get("tap", dict(NONE_ACTION)))
+            self.linger_action_editor.set_action(preview.get("linger", dict(NONE_ACTION)))
+            self.linger_delay_spin.setValue(normalize_linger_ms(preview.get("lingerMs", DEFAULT_LINGER_MS)))
             self.cooldown_spin.setValue(normalize_cooldown_ms(preview.get("cooldownMs", DEFAULT_COOLDOWN_MS), DEFAULT_COOLDOWN_MS))
             self._suppress_binding_signals = False
             self._set_v3_controls_enabled(False)
@@ -1440,14 +1510,21 @@ class MainWindow(QMainWindow):
         if isinstance(draft, dict):
             cooldown_value = normalize_cooldown_ms(draft.get("cooldownMs", DEFAULT_COOLDOWN_MS), DEFAULT_COOLDOWN_MS)
 
+        linger_action = draft.get("linger") if isinstance(draft, dict) else None
+        linger_ms_value = DEFAULT_LINGER_MS
+        if isinstance(draft, dict):
+            linger_ms_value = normalize_linger_ms(draft.get("lingerMs", DEFAULT_LINGER_MS))
+
         try:
-            binding = create_v3_binding(tap, cooldown_value, draft)
+            binding = create_v3_binding(tap, cooldown_value, draft, linger_action, linger_ms_value)
         except InvalidConfig:
-            binding = create_v3_binding(dict(NONE_ACTION), DEFAULT_COOLDOWN_MS, draft)
+            binding = create_v3_binding(dict(NONE_ACTION), DEFAULT_COOLDOWN_MS, draft, linger_action, linger_ms_value)
         set_v3_binding(self.config, self.active_context_key, monitor_name, position_id, binding)
         self._local_binding_drafts[draft_key] = copy.deepcopy(binding)
         self._suppress_binding_signals = True
         self.action_editor.set_action(binding.get("tap", dict(NONE_ACTION)))
+        self.linger_action_editor.set_action(binding.get("linger", dict(NONE_ACTION)))
+        self.linger_delay_spin.setValue(binding.get("lingerMs", DEFAULT_LINGER_MS))
         self.cooldown_spin.setValue(binding.get("cooldownMs", DEFAULT_COOLDOWN_MS))
         self._suppress_binding_signals = False
         self._set_v3_controls_enabled(True)
@@ -1568,6 +1645,8 @@ class MainWindow(QMainWindow):
             self._populate_binding_state_combo(state)
             self._suppress_binding_signals = True
             self.action_editor.set_action(binding.get("tap", dict(NONE_ACTION)))
+            self.linger_action_editor.set_action(binding.get("linger", dict(NONE_ACTION)))
+            self.linger_delay_spin.setValue(normalize_linger_ms(binding.get("lingerMs", DEFAULT_LINGER_MS)))
             self.cooldown_spin.setValue(normalize_cooldown_ms(binding.get("cooldownMs", DEFAULT_COOLDOWN_MS), DEFAULT_COOLDOWN_MS))
             self._suppress_binding_signals = False
             self._set_v3_controls_enabled(False)
@@ -1586,6 +1665,8 @@ class MainWindow(QMainWindow):
         self._populate_binding_state_combo(state if state in {V3_BINDING_INHERIT, V3_BINDING_NONE, "shortcut", "command"} else V3_BINDING_NONE)
         self._suppress_binding_signals = True
         self.action_editor.set_action(tap)
+        self.linger_action_editor.set_action(exact.get("linger", dict(NONE_ACTION)))
+        self.linger_delay_spin.setValue(normalize_linger_ms(exact.get("lingerMs", DEFAULT_LINGER_MS)))
         self.cooldown_spin.setValue(normalize_cooldown_ms(exact.get("cooldownMs", DEFAULT_COOLDOWN_MS), DEFAULT_COOLDOWN_MS))
         self._suppress_binding_signals = False
         self._set_v3_controls_enabled(state != V3_BINDING_INHERIT or self.active_context_key == "default")
@@ -1610,12 +1691,14 @@ class MainWindow(QMainWindow):
             if isinstance(binding, dict):
                 return binding
             current_state = self.binding_state_combo.currentData() if self.binding_state_combo else "shortcut"
+            linger_action = self.linger_action_editor.current_action()
+            linger_ms_value = self.linger_delay_spin.value()
             if current_state == V3_BINDING_NONE:
-                binding = create_v3_binding(dict(NONE_ACTION), self.cooldown_spin.value(), preserved)
+                binding = create_v3_binding(dict(NONE_ACTION), self.cooldown_spin.value(), preserved, linger_action, linger_ms_value)
             elif current_state == "command":
-                binding = create_v3_binding(self.action_editor.current_action(), self.cooldown_spin.value(), preserved)
+                binding = create_v3_binding(self.action_editor.current_action(), self.cooldown_spin.value(), preserved, linger_action, linger_ms_value)
             else:
-                binding = create_v3_binding(self.action_editor.current_action(), self.cooldown_spin.value(), preserved)
+                binding = create_v3_binding(self.action_editor.current_action(), self.cooldown_spin.value(), preserved, linger_action, linger_ms_value)
             set_v3_binding(self.config, self.active_context_key, monitor_name, position_id, binding)
             return binding
         monitors = self.config.setdefault("monitors", {})
@@ -1745,6 +1828,42 @@ class MainWindow(QMainWindow):
         binding["cooldownMs"] = int(value)
         self.canvas.set_config(self.config)
 
+    def _on_linger_action_changed(self, action: dict):
+        if self._suppress_binding_signals or not self.is_v3:
+            return
+        if not self.current_selection or not self.config_valid:
+            return
+        if self.binding_state_combo and self.binding_state_combo.currentData() == V3_BINDING_INHERIT and self.active_context_key != "default":
+            return
+
+        binding = self._ensure_current_binding()
+        if binding is None:
+            return
+        preserved = copy.deepcopy(binding)
+        preserved["linger"] = _clone_action(action)
+        preserved["lingerMs"] = normalize_linger_ms(
+            preserved.get("lingerMs", DEFAULT_LINGER_MS),
+            DEFAULT_LINGER_MS,
+        )
+        set_v3_binding(self.config, self.active_context_key, *self.current_selection, preserved)
+        self._local_binding_drafts[(self.active_context_key, *self.current_selection)] = copy.deepcopy(preserved)
+        self.canvas.set_config(self._canvas_config())
+
+    def _on_linger_delay_changed(self, value: int):
+        if self._suppress_binding_signals or not self.is_v3:
+            return
+        if not self.current_selection or not self.config_valid:
+            return
+        if self.binding_state_combo and self.binding_state_combo.currentData() == V3_BINDING_INHERIT and self.active_context_key != "default":
+            return
+
+        binding = self._ensure_current_binding()
+        if binding is None:
+            return
+        binding["lingerMs"] = int(value)
+        self._local_binding_drafts[(self.active_context_key, *self.current_selection)] = copy.deepcopy(binding)
+        self.canvas.set_config(self._canvas_config())
+
     def _validate_config_for_save(self):
         if self.is_v3:
             contexts = self.config.get("contexts", {})
@@ -1778,6 +1897,13 @@ class MainWindow(QMainWindow):
                         tap = binding.get("tap")
                         if not isinstance(normalize_action(tap), dict):
                             return False, _("Invalid context identifier.")
+                        linger = binding.get("linger")
+                        if linger is not None and not isinstance(normalize_action(linger), dict):
+                            return False, _("Invalid context identifier.")
+                        if "lingerMs" in binding:
+                            linger_ms_ok, _linger_ms_error = validate_linger_ms(binding.get("lingerMs"))
+                            if not linger_ms_ok:
+                                return False, _("Invalid linger delay value.")
             return True, ""
         monitors = self.config.get("monitors", {})
         for _monitor_name, monitor in monitors.items():

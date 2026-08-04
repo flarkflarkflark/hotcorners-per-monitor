@@ -12,6 +12,9 @@ SCHEMA_VERSION_V3 = 3
 DEFAULT_COOLDOWN_MS = 350
 LEGACY_COOLDOWN_MS = 0
 MAX_COOLDOWN_MS = 10_000
+DEFAULT_LINGER_MS = 500
+MIN_LINGER_MS = 100
+MAX_LINGER_MS = 10_000
 MAX_COMMAND_PROGRAM_BYTES = 4096
 MAX_COMMAND_ARGUMENTS = 128
 MAX_COMMAND_ARGUMENT_BYTES = 16 * 1024
@@ -196,6 +199,32 @@ def normalize_cooldown_ms(value, default=DEFAULT_COOLDOWN_MS):
         return int(default)
 
     raise InvalidConfig("invalid cooldownMs")
+
+
+def _valid_linger_ms(value):
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and MIN_LINGER_MS <= value <= MAX_LINGER_MS
+    )
+
+
+def validate_linger_ms(value):
+    if not _valid_linger_ms(value):
+        return False, "invalid-linger-ms"
+    return True, ""
+
+
+def normalize_linger_ms(value, default=DEFAULT_LINGER_MS):
+    ok, _error = validate_linger_ms(value)
+    if ok:
+        return int(value)
+
+    default_ok, _default_error = validate_linger_ms(default)
+    if default_ok:
+        return int(default)
+
+    raise InvalidConfig("invalid lingerMs")
 
 
 def create_v2_binding(action, cooldown_ms=DEFAULT_COOLDOWN_MS):
