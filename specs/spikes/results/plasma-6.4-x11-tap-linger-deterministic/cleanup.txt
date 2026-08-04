@@ -1,0 +1,12 @@
+cleanup_rc=0
+gate_loaded_after=false
+rpm_count_before=2283
+rpm_count_after=2283
+network_before<<EOF
+lo               UNKNOWN        00:00:00:00:00:00 <LOOPBACK,UP,LOWER_UP> 
+enp0s3           DOWN           08:00:27:2d:e6:a9 <NO-CARRIER,BROADCAST,MULTICAST,UP> 
+EOF
+network_after<<EOF
+lo               UNKNOWN        00:00:00:00:00:00 <LOOPBACK,UP,LOWER_UP> 
+enp0s3           DOWN           08:00:27:2d:e6:a9 <NO-CARRIER,BROADCAST,MULTICAST,UP> 
+EOF

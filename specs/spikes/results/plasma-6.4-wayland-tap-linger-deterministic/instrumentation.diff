@@ -1,0 +1,152 @@
+--- /home/vm/src/hotcorners-per-monitor-with-deterministic-gate-v3/kwin-script/contents/code/main.js	2026-08-03 10:03:07.000000000 -0400
++++ /tmp/hcpm-wayland-gate-vm-6479/hotcorners-per-monitor-gate/contents/code/main.js	2026-08-03 22:51:22.074680011 -0400
+@@ -605,6 +605,9 @@
+ }
+ 
+ function getCurrentContextKey(screen) {
++    if (hcpmGateScreen) {
++        return "gate-exact";
++    }
+     const activityId = typeof workspace.currentActivity === "string" ?
+         workspace.currentActivity : "";
+     let desktopId = "";
+@@ -694,6 +697,33 @@
+ let tapLingerInteractions = [];
+ let tapLingerSignalsConnected = false;
+ 
++// Evidence-only deterministic gate hooks. These exist only in the generated
++// test package; the tracked production source is never modified.
++let hcpmGateCursor = {x: 100, y: 0};
++let hcpmGateScreen = null;
++let hcpmGateActionCounts = {TAP: 0, LINGER: 0, DEF: 0, CTX: 0};
++
++function hcpmGateLog(message) {
++    console.warn("HCPM_GATE " + message);
++}
++
++function hcpmGateSetCursor(x, y) {
++    hcpmGateCursor = {x: x, y: y};
++    hcpmGateLog("cursor=" + x + "," + y);
++}
++
++function hcpmGateResetCounts() {
++    hcpmGateActionCounts = {TAP: 0, LINGER: 0, DEF: 0, CTX: 0};
++    hcpmGateLog("counts-reset");
++}
++
++function hcpmGateDump() {
++    hcpmGateLog("status pending=" + tapLingerInteractions.length +
++        " cooldowns=" + cooldownTimers.length +
++        " counts=" + JSON.stringify(hcpmGateActionCounts));
++}
++
++
+ function loadRuntimeConfig() {
+     const raw = readConfig("MonitorConfigs", "{}");
+     return normalizeConfigToV3(JSON.parse(raw));
+@@ -916,6 +946,9 @@
+ }
+ 
+ function getTapLingerCursorPos() {
++    if (hcpmGateScreen) {
++        return hcpmGateCursor;
++    }
+     if (!workspace || !workspace.cursorPos) {
+         return null;
+     }
+@@ -985,6 +1018,9 @@
+ }
+ 
+ function dispatchActionThroughCooldown(outputName, position, cooldownMs, action) {
++    hcpmGateLog("dispatch-check output=" + outputName + " position=" + position +
++        " cooldownMs=" + cooldownMs + " active=" + isCooldownActive(outputName, position) +
++        " action=" + JSON.stringify(action));
+     if (!isDispatchableAction(action)) {
+         return false;
+     }
+@@ -1104,6 +1140,9 @@
+ }
+ 
+ function getScreenAtCursor() {
++    if (hcpmGateScreen) {
++        return hcpmGateScreen;
++    }
+     const pos = workspace.cursorPos;
+     const screens = workspace.screens;
+     for (let i = 0; i < screens.length; i++) {
+@@ -1139,6 +1178,13 @@
+     if (action.type === "shortcut") {
+         const component = action.component;
+         const name = action.name;
++        if (component === "hcpm-gate") {
++            if (Object.prototype.hasOwnProperty.call(hcpmGateActionCounts, name)) {
++                hcpmGateActionCounts[name] += 1;
++            }
++            hcpmGateLog("ACTION " + name + " counts=" + JSON.stringify(hcpmGateActionCounts));
++            return;
++        }
+         callDBus(
+             "org.kde.kglobalaccel",
+             "/component/" + component,
+@@ -1170,6 +1216,61 @@
+     beginTapLingerInteraction(outputName, positionName, screen, binding, contextKey);
+ }
+ 
++
++
++// Deterministic ingress for the live runtime gate. registerShortcut is a KWin
++// API; the shell harness invokes these actions through kglobalaccel. The
++// production electric-border registration below remains present and unchanged.
++(function hcpmInstallGateHooks() {
++    const screens = workspace.screens;
++    if (!screens || screens.length === 0) {
++        hcpmGateLog("BLOCKED no-screens");
++        return;
++    }
++    hcpmGateScreen = screens[0];
++    const g = hcpmGateScreen.geometry;
++    hcpmGateSetCursor(g.x + Math.floor(g.width / 2), g.y);
++    hcpmGateLog("READY output=" + hcpmGateScreen.name +
++        " geometry=" + g.x + "," + g.y + "," + g.width + "x" + g.height);
++
++    registerShortcut("HCPM_GATE_ENTER", "HCPM gate enter", "", function() {
++        hcpmGateLog("HOOK ENTER");
++        handleCorner("Top");
++    });
++    registerShortcut("HCPM_GATE_ENTER_DUP", "HCPM gate duplicate enter", "", function() {
++        hcpmGateLog("HOOK ENTER_DUP");
++        handleCorner("Top");
++    });
++    registerShortcut("HCPM_GATE_INSIDE8", "HCPM gate move inside 8", "", function() {
++        const g = hcpmGateScreen.geometry;
++        hcpmGateSetCursor(g.x + Math.floor(g.width / 2), g.y + 8);
++        handleTapLingerCursorChange();
++    });
++    registerShortcut("HCPM_GATE_OUTSIDE9", "HCPM gate move outside 9", "", function() {
++        const g = hcpmGateScreen.geometry;
++        hcpmGateSetCursor(g.x + Math.floor(g.width / 2), g.y + 9);
++        handleTapLingerCursorChange();
++    });
++    registerShortcut("HCPM_GATE_RESET_CURSOR", "HCPM gate reset cursor", "", function() {
++        const g = hcpmGateScreen.geometry;
++        hcpmGateSetCursor(g.x + Math.floor(g.width / 2), g.y);
++    });
++    registerShortcut("HCPM_GATE_RELOAD", "HCPM gate reload config", "", function() {
++        hcpmGateLog("HOOK RELOAD");
++        loadConfig();
++    });
++    registerShortcut("HCPM_GATE_CLEANUP", "HCPM gate cleanup", "", function() {
++        hcpmGateLog("HOOK CLEANUP");
++        cleanupRuntime();
++    });
++    registerShortcut("HCPM_GATE_RESET_COUNTS", "HCPM gate reset counts", "", function() {
++        hcpmGateResetCounts();
++    });
++    registerShortcut("HCPM_GATE_DUMP", "HCPM gate dump state", "", function() {
++        hcpmGateDump();
++    });
++})();
++
+ // Bootstrap: load config + register all 8 corners/edges
+ loadConfig();
+ connectTapLingerSignals();
