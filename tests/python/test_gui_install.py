@@ -32,6 +32,65 @@ IMPORT_PROBE = textwrap.dedent(
     """
 )
 
+# A minimally-realistic kpackagetool6 fake: setup.sh now requires --install/
+# --upgrade to actually place files and --list to reflect them (see
+# test_kwin_script_install.py for the full failure-mode coverage of that
+# contract). This only needs to model the working case.
+FAKE_KPACKAGETOOL6_SRC = textwrap.dedent(
+    """\
+    #!/usr/bin/env python3
+    import json
+    import os
+    import shutil
+    import sys
+    from pathlib import Path
+
+    def data_root():
+        xdg = os.environ.get("XDG_DATA_HOME")
+        if xdg:
+            return Path(xdg)
+        return Path(os.environ["HOME"]) / ".local" / "share"
+
+    args = sys.argv[1:]
+    package_type = None
+    action = None
+    action_path = None
+    for i, a in enumerate(args):
+        if a in ("-t", "--type"):
+            package_type = args[i + 1]
+        elif a.startswith("--type="):
+            package_type = a.split("=", 1)[1]
+        elif a in ("-i", "--install", "-u", "--upgrade"):
+            action_path = args[i + 1]
+            action = "install" if a in ("-i", "--install") else "upgrade"
+        elif a in ("-l", "--list"):
+            action = "list"
+
+    scripts_dir = data_root() / "kwin" / "scripts"
+    if action == "list":
+        print("Listing KPackageType: " + str(package_type) + " in " + str(scripts_dir) + "/")
+        if scripts_dir.is_dir():
+            for child in sorted(scripts_dir.iterdir()):
+                if (child / "metadata.json").is_file():
+                    print(child.name)
+        sys.exit(0)
+
+    if action in ("install", "upgrade"):
+        source = Path(action_path)
+        with (source / "metadata.json").open() as fh:
+            pkg_id = json.load(fh)["KPlugin"]["Id"]
+        target = scripts_dir / pkg_id
+        if target.exists():
+            shutil.rmtree(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(source, target)
+        print("Successfully " + ("installed" if action == "install" else "upgraded") + " " + str(target) + "/")
+        sys.exit(0)
+
+    sys.exit(1)
+    """
+)
+
 
 class GuiInstallTests(unittest.TestCase):
     def setUp(self):
@@ -62,7 +121,7 @@ class GuiInstallTests(unittest.TestCase):
     def _make_default_fakes(self):
         # Read/write-safe stand-ins for the KDE utilities setup.sh shells
         # out to. None of these touch the real system.
-        for name in ("kwriteconfig6", "kreadconfig6", "kpackagetool6", "update-desktop-database", "qdbus6"):
+        for name in ("kwriteconfig6", "kreadconfig6", "update-desktop-database", "qdbus6"):
             self._write_exe(
                 self.fakebin / name,
                 "#!/usr/bin/env bash\nexit 0\n",
@@ -71,6 +130,7 @@ class GuiInstallTests(unittest.TestCase):
             self.fakebin / "msgfmt",
             "#!/usr/bin/env bash\ncp \"$1\" \"$3\"\n",
         )
+        self._write_exe(self.fakebin / "kpackagetool6", FAKE_KPACKAGETOOL6_SRC)
 
     def _run(self, command, env=None, check=True, timeout=None):
         return subprocess.run(
