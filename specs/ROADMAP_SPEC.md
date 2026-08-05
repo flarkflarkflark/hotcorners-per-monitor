@@ -96,7 +96,7 @@ method:    Run(string program, string argumentsJson) -> (bool accepted, string e
 
 ## Commands
 
-Current repository has no automated build/test entry points. The first implementation task establishes these intended commands:
+`tests/run-tests.sh` runs the current Python and JavaScript suites (122 Python tests, 158 JavaScript tests as of this writing). The CMake/CTest commands below apply from v0.4 onward, once the `kcm/` scaffold exists:
 
 ```bash
 ./tests/run-tests.sh                 # all Python and JavaScript tests
@@ -115,11 +115,10 @@ Manual runtime checks use `journalctl --user`/the KWin journal, `kcmshell6`, `qd
 ```text
 kwin-script/                 KWin runtime backend
 config-gui/                  PyQt6 configurator (v0.1–v0.3 compatibility UI)
-command-runner/              Session-D-Bus process helper introduced in v0.2
+command-runner/              Session-D-Bus process helper and activation metadata introduced in v0.2
 tests/python/                schema, GUI-model and command-runner tests
 tests/js/                    KWin backend tests with mocked KWin globals
 kcm/                         native C++/QML KCM introduced in v0.4
-dbus/                        D-Bus interface and activation metadata
 specs/                       architecture, impact and roadmap documents
 tasks/                       implementation plan and checklist
 ```
@@ -194,4 +193,4 @@ No framework, abstraction or dependency is added before a roadmap requirement ne
 - Confirm or adjust the proposed 500 ms linger default.
 - Confirm the context precedence and per-binding inheritance rules.
 - Confirm or adjust the proposed 8-logical-pixel linger stay zone.
-- Determine the Plasma 6.4 and X11 test environments before implementation reaches their release gates.
+- Plasma 6.4 Wayland and X11 test environments are established and have recorded QTimer-capability and tap/linger-timing gate results (`specs/spikes/results/`); the proposed defaults below were implemented against them but have not received the explicit human sign-off this section still requires.

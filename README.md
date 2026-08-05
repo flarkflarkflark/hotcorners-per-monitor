@@ -18,8 +18,11 @@ This project gives every corner and edge of every connected monitor its own inde
 
 - **Visual monitor layout** — see your actual screen arrangement at scale and click directly on the corner or edge you want to configure. Configured handles are highlighted so you see your setup at a glance.
 - **8 hot zones per monitor: 4 corners + 4 edge midpoints**, configured independently.
-- **Monitor identification by output name** (e.g. `DP-1`, `HDMI-A-1`) — stable across reboots and cable swaps.
-- **Action types:** none, or invoke any KDE global shortcut (`Overview`, `Grid View`, `Show Desktop`, lock screen, application launcher, or any custom shortcut name).
+- **Monitor identification by output name** (e.g. `DP-1`, `HDMI-A-1`) — usually stable across reboots, but connector names are not a stable hardware identity: reordering physical ports or swapping which cable feeds which port can change which name a given monitor gets. Disconnected/renamed output entries are kept, not deleted, so you don't lose configuration when that happens.
+- **Action types:** none, invoke any KDE global shortcut (`Overview`, `Grid View`, `Show Desktop`, lock screen, application launcher, or any custom shortcut name), or run a command directly (no shell involved unless you explicitly configure one).
+- **Per-binding cooldown** to suppress rapid repeated activation of the same corner.
+- **Tap vs. linger** — configure a short-touch action and a separate hold-until-threshold action per corner/edge.
+- **Per-activity and per-virtual-desktop overrides** — bindings can differ by activity, virtual desktop, or both, falling back to a default when no override applies.
 - **Scales gracefully** from one monitor to many. Tested with up to six displays in mixed arrangements (side-by-side, stacked, ultrawide+laptop).
 - **Multilingual** — English, Dutch (Nederlands), German (Deutsch). More translations welcome.
 - **Pure standards compliance** — config is stored in `kwinrc` and applied via KWin's standard reconfigure mechanism.
@@ -150,21 +153,29 @@ Pull requests with translations are very welcome.
 
 ## Roadmap
 
-### v0.1.0 (initial public release)
+Only v0.1.0 has been tagged and released. Everything past that is implemented
+and tested on `main` but not yet cut into a tagged release — see
+`tasks/todo.md` and `specs/ROADMAP_SPEC.md` for exact status and outstanding
+release gates (translations, uninstall parity, X11 verification, tagging).
+
+### v0.1.0 (tagged, released)
 - Visual monitor arrangement canvas with click-to-configure handles
 - All 8 hot zones per monitor (4 corners + 4 edge midpoints), monitor matching by output name
 - Action types: none, invoke shortcut (built-in catalogue + custom)
 - Translations: English, Dutch, German
 
-### v0.2.0
-- Direct command execution as an action type (in addition to shortcuts)
+### Implemented on `main`, not yet released
+- Direct command execution as an action type (in addition to shortcuts), via a session-D-Bus helper with no implicit shell
 - Cooldown per corner to prevent rapid double-fires
-- French, Spanish, Italian translations
-
-### v0.3.0
 - "Tap vs linger" — short touch does action A, holding for N ms does action B
-- Per-activity configuration
-- Per-virtual-desktop configuration
+- Per-activity and per-virtual-desktop configuration overrides, with default fallback
+- Output ownership fails closed on ambiguous/overlapping/cloned monitor geometry instead of guessing
+
+### Still outstanding
+- French, Spanish, Italian translations (desktop entry, KWin package metadata, and GUI)
+- Activity/desktop discovery in the GUI (currently entered as free text; nothing queries KDE for the available list)
+- Interrupted-upgrade, uninstall, and X11 manual release gates for the current feature set
+- v0.2.0/v0.3.0 tags
 
 ### v0.4.0+
 - Native KWin/System Settings configuration integration

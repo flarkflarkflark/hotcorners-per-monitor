@@ -8,7 +8,7 @@
 - [x] Record architecture, normative schema, specification and impact analysis.
 - [x] Run adversarial Codex review and reconcile all 21 findings.
 - [ ] Human approves defaults, stay-zone, context inheritance, command-helper design and hard platform gates.
-- [ ] Document v3 default-context fallback semantics and examples.
+- [x] Document v3 default-context fallback semantics and examples.
 
 ## v0.2.0
 
@@ -22,26 +22,35 @@
 - [x] Add specified session-D-Bus command runner without implicit shell.
 - [x] Add no-shell command helper client contract in KWin runtime.
 - [x] Install/remove the helper and D-Bus metadata through an ownership manifest.
-- [ ] Add command/cooldown PyQt controls and fix installed gettext lookup.
+- [x] Add command/cooldown PyQt controls and fix installed gettext lookup.
 - [ ] Add French translation.
 - [ ] Add Spanish translation.
 - [ ] Add Italian translation.
-- [ ] Translate desktop entry and KWin package metadata; generalize translation install/removal.
-- [ ] Test ambiguous/overlapping output ownership and malformed configuration.
-- [ ] Run upgrade, fresh-install, interrupted-upgrade, uninstall, Wayland and X11 gates.
+- [ ] Translate desktop entry and KWin package metadata for fr/es/it; generalize `uninstall.sh` translation removal to match `setup.sh`'s generic install loop (it currently only removes `nl`/`de`, see release-readiness audit).
+- [x] Test ambiguous/overlapping output ownership and malformed configuration.
+- [x] Run upgrade and fresh-install gates on live Plasma/KWin 6.7.3 Wayland (see incident/rollback/re-attempt history on the kpackagetool6 destructive-upgrade branch).
+- [ ] Run interrupted-upgrade, uninstall, and X11 gates (Wayland-only so far; no X11 pass recorded for the current feature set).
 - [ ] Update docs/metadata/changelog and prepare v0.2.0 tag.
 
 ## v0.3.0
 
-- [ ] Prove timer and per-output desktop APIs on Plasma 6.4/current, Wayland/X11.
-- [ ] Add the normative tap/linger state machine and output ownership behavior.
-- [ ] Add v0.3 context schema and lossless v0.2 migration.
-- [ ] Add per-binding context fallback and per-output desktop resolution.
-- [ ] Add GUI activity/desktop discovery.
-- [ ] Add context selector and inheritance UI.
-- [ ] Add tap/linger editor UI and translations.
-- [ ] Run timing/context/rename/removal/hot-unplug and dual-monitor gates.
-- [ ] Pass X11 gate; do not release while required platform support is pending.
+Implementation of this section is substantially ahead of its checklist
+position: the items below were built and merged (see `feature/v0.2-roadmap-foundation`,
+PR #1) before the v0.2.0 checkpoint's gates and tag were completed. They are
+implemented and unit/integration-tested; they are not yet covered by the
+live/manual gates this checklist still requires, and no v0.3.0 release has
+been tagged. See the release-readiness audit for the implementation-vs-release
+distinction.
+
+- [ ] Prove timer and per-output desktop APIs on Plasma 6.4/current, Wayland/X11. (QTimer capability is proven on Plasma 6.4 Wayland and X11, see `specs/spikes/QTIMER_SPIKE.md` and `specs/spikes/results/`; the per-output desktop API (`currentDesktopForScreen`) is implemented and unit-tested but has no dedicated Plasma 6.4 spike record.)
+- [x] Add the normative tap/linger state machine and output ownership behavior.
+- [x] Add v0.3 context schema and lossless v0.2 migration.
+- [x] Add per-binding context fallback and per-output desktop resolution.
+- [ ] Add GUI activity/desktop discovery. (Activity/desktop IDs are still entered as free text in the GUI; nothing queries KActivities or KWin for the available list.)
+- [x] Add context selector and inheritance UI.
+- [x] Add tap/linger editor UI.
+- [ ] Run timing/context/rename/removal/hot-unplug and dual-monitor gates. (Tap/linger timing is gated on Plasma 6.4 Wayland and X11, deterministic and real; context/activity rename-removal and hot-unplug are wired in the runtime — `screensChanged` cleanup, unavailable-context preservation — but have no recorded manual gate.)
+- [ ] Pass X11 gate; do not release while required platform support is pending. (Tap/linger timing has an X11 pass at Plasma 6.4; the full v0.3 feature set — contexts, command actions — has not had a dedicated X11 gate run.)
 - [ ] Update docs/metadata/changelog and prepare v0.3.0 tag.
 
 ## v0.4.0
