@@ -72,8 +72,13 @@ Normative interface:
 bus:       org.flark.HotCorners.CommandRunner
 object:    /CommandRunner
 interface: org.flark.HotCorners.CommandRunner1
-method:    Run(string program, string argumentsJson) -> (bool accepted, string errorName)
+method:    Run(string program, string argumentsJson) -> [bool accepted, string errorName]
+wire:      in "ss", out "av" (QVariantList: accepted, then errorName)
 ```
+
+The reply is a two-element `QVariantList`, which introspects as `av` rather
+than a `(bs)` struct. Callers must therefore tolerate the values arriving
+variant-wrapped, and must not assume a fixed-arity struct.
 
 - `argumentsJson` must decode to at most 128 string arguments, each at most 16 KiB and at most 128 KiB total.
 - `program` is non-empty, contains no NUL, and is at most 4096 bytes. Absolute paths are used directly; bare names are resolved using the helper's `PATH`.
@@ -83,6 +88,7 @@ method:    Run(string program, string argumentsJson) -> (bool accepted, string e
 - The service exits after 30 seconds idle and may be activated again by D-Bus.
 - Session bus scope is transport, not authorization: any same-user process can call it, but that user can already execute processes. The helper never elevates privileges.
 - The KWin callback logs only the error name when activation or launch fails.
+- KWin's `callDBus()` is always asynchronous: it returns nothing and passes the reply values to an optional callback supplied as its last argument. The runtime must therefore collect the outcome in that callback. Treating the return value as the reply reports every call — including successful ones — as `invalid-helper-response`.
 
 ## Configuration Compatibility
 

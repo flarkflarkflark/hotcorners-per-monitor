@@ -42,6 +42,27 @@ function sampleAction() {
     };
 }
 
+// callDBus never returns a reply -- it passes reply values to the trailing
+// callback -- so the outcome is collected rather than returned. See
+// command-response.test.js for the reply-shape coverage.
+function invoke(ctx, action, helperClient) {
+    let result;
+    ctx.invokeCommandHelper(action, helperClient, function(value) {
+        result = value;
+    });
+    return result;
+}
+
+// Answers through the callback with the given reply values.
+function respondWith(...replyArgs) {
+    return function(...args) {
+        const callback = args[args.length - 1];
+        if (typeof callback === "function") {
+            callback(...replyArgs);
+        }
+    };
+}
+
 test("A: valid command action builds exact Run(program, argumentsJson) call", () => {
     const ctx = loadCommandClientContext();
     const action = sampleAction();
@@ -100,9 +121,9 @@ test("E/F: invalid command action is rejected before helper call", () => {
     const ctx = loadCommandClientContext();
     const helperClient = {
         calls: 0,
-        call() {
+        call(...args) {
             helperClient.calls++;
-            return [true, ""];
+            respondWith(true, "")(...args);
         },
     };
 
@@ -115,7 +136,7 @@ test("E/F: invalid command action is rejected before helper call", () => {
     ];
 
     for (const action of invalidActions) {
-        const result = ctx.invokeCommandHelper(action, helperClient);
+        const result = invoke(ctx, action, helperClient);
         assert.equal(result.accepted, false);
     }
 
@@ -125,13 +146,9 @@ test("E/F: invalid command action is rejected before helper call", () => {
 test("J: helper success result is normalized", () => {
     const ctx = loadCommandClientContext();
     const action = sampleAction();
-    const helperClient = {
-        call() {
-            return [true, ""];
-        },
-    };
+    const helperClient = {call: respondWith([true, ""])};
 
-    const result = ctx.invokeCommandHelper(action, helperClient);
+    const result = invoke(ctx, action, helperClient);
 
     assert.deepEqual(plain(result), {accepted: true, errorName: ""});
 });
@@ -139,13 +156,9 @@ test("J: helper success result is normalized", () => {
 test("K: helper rejection result is normalized", () => {
     const ctx = loadCommandClientContext();
     const action = sampleAction();
-    const helperClient = {
-        call() {
-            return [false, "invalid-program"];
-        },
-    };
+    const helperClient = {call: respondWith([false, "invalid-program"])};
 
-    const result = ctx.invokeCommandHelper(action, helperClient);
+    const result = invoke(ctx, action, helperClient);
 
     assert.deepEqual(plain(result), {accepted: false, errorName: "invalid-program"});
 });
@@ -159,7 +172,7 @@ test("L: transport errors are caught and normalized", () => {
         },
     };
 
-    const result = ctx.invokeCommandHelper(action, helperClient);
+    const result = invoke(ctx, action, helperClient);
 
     assert.deepEqual(plain(result), {accepted: false, errorName: "transport-error"});
 });
@@ -168,7 +181,7 @@ test("M: unavailable helper client yields explicit unavailable result", () => {
     const ctx = loadCommandClientContext();
     const action = sampleAction();
 
-    const result = ctx.invokeCommandHelper(action, null);
+    const result = invoke(ctx, action, null);
 
     assert.deepEqual(plain(result), {accepted: false, errorName: "helper-unavailable"});
 });
@@ -193,11 +206,11 @@ test("N/O/P: non-mutation, one call, and unknown fields ignored", () => {
         calls: [],
         call(...args) {
             helperClient.calls.push(args);
-            return {accepted: true, errorName: ""};
+            respondWith({accepted: true, errorName: ""})(...args);
         },
     };
 
-    const result = ctx.invokeCommandHelper(action, helperClient);
+    const result = invoke(ctx, action, helperClient);
 
     assert.deepEqual(plain(result), {accepted: true, errorName: ""});
     assert.deepEqual(action, original);

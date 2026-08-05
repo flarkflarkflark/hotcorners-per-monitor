@@ -155,10 +155,27 @@ function buildCommandRequest(action) {
     };
 }
 
+// The helper's Run() is declared with result="QVariantList", which appears on
+// the wire as "av" (array of variants), so individual reply values may reach
+// the script wrapped rather than as bare primitives.
+function unwrapDBusValue(value) {
+    if (isObject(value)) {
+        if (hasOwn(value, "value")) {
+            return value.value;
+        }
+        if (hasOwn(value, "variant")) {
+            return value.variant;
+        }
+    }
+    return value;
+}
+
 function normalizeCommandResult(rawResult) {
     if (Array.isArray(rawResult) && rawResult.length >= 2) {
-        if (typeof rawResult[0] === "boolean" && typeof rawResult[1] === "string") {
-            return {accepted: rawResult[0], errorName: rawResult[1]};
+        const accepted = unwrapDBusValue(rawResult[0]);
+        const errorName = unwrapDBusValue(rawResult[1]);
+        if (typeof accepted === "boolean" && typeof errorName === "string") {
+            return {accepted, errorName};
         }
         return {accepted: false, errorName: "invalid-helper-response"};
     }
@@ -171,29 +188,58 @@ function normalizeCommandResult(rawResult) {
     return {accepted: false, errorName: "invalid-helper-response"};
 }
 
-function invokeCommandHelper(action, helperClient) {
+// callDBus passes the D-Bus reply values to its callback as arguments. A
+// QVariantList reply can arrive either as one array argument or as separate
+// arguments, so accept both shapes.
+function normalizeCommandReplyArgs(replyArgs) {
+    if (!Array.isArray(replyArgs)) {
+        return {accepted: false, errorName: "invalid-helper-response"};
+    }
+    if (replyArgs.length === 1) {
+        return normalizeCommandResult(unwrapDBusValue(replyArgs[0]));
+    }
+    return normalizeCommandResult(replyArgs);
+}
+
+// Reports the outcome through onResult exactly once. Validation and transport
+// failures are reported immediately; a real reply arrives asynchronously,
+// because callDBus never returns one.
+function invokeCommandHelper(action, helperClient, onResult) {
+    const report = typeof onResult === "function" ? onResult : function() {};
+    let reported = false;
+    function reportOnce(result) {
+        if (reported) return;
+        reported = true;
+        report(result);
+    }
+
     const validation = validateCommandAction(action);
     if (!validation.ok) {
-        return {accepted: false, errorName: validation.errorName};
+        reportOnce({accepted: false, errorName: validation.errorName});
+        return;
     }
 
     if (!helperClient || typeof helperClient.call !== "function") {
-        return {accepted: false, errorName: "helper-unavailable"};
+        reportOnce({accepted: false, errorName: "helper-unavailable"});
+        return;
     }
 
     const request = buildCommandRequest(action);
     try {
-        const rawResult = helperClient.call(
+        helperClient.call(
             request.bus,
             request.objectPath,
             request.interfaceName,
             request.methodName,
             request.program,
-            request.argumentsJson
+            request.argumentsJson,
+            function() {
+                reportOnce(normalizeCommandReplyArgs(
+                    Array.prototype.slice.call(arguments)));
+            }
         );
-        return normalizeCommandResult(rawResult);
     } catch (_) {
-        return {accepted: false, errorName: "transport-error"};
+        reportOnce({accepted: false, errorName: "transport-error"});
     }
 }
 
@@ -203,14 +249,15 @@ function createCommandHelperClient() {
     }
 
     return {
-        call(bus, objectPath, interfaceName, methodName, program, argumentsJson) {
+        call(bus, objectPath, interfaceName, methodName, program, argumentsJson, callback) {
             return callDBus(
                 bus,
                 objectPath,
                 interfaceName,
                 methodName,
                 program,
-                argumentsJson
+                argumentsJson,
+                callback
             );
         },
     };
@@ -1214,10 +1261,11 @@ function executeAction(action) {
     }
 
     if (action.type === "command") {
-        const result = invokeCommandHelper(action, createCommandHelperClient());
-        if (!result.accepted) {
-            print("hotcorners-per-monitor: command helper error:", result.errorName);
-        }
+        invokeCommandHelper(action, createCommandHelperClient(), function(result) {
+            if (!result.accepted) {
+                print("hotcorners-per-monitor: command helper error:", result.errorName);
+            }
+        });
     }
 }
 
