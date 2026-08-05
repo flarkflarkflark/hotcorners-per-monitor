@@ -57,25 +57,29 @@ from PyQt6.QtWidgets import (
 # -----------------------------------------------------------------------------
 APP_DOMAIN = "hotcorners-config"
 
-def setup_i18n():
+def setup_i18n(locale_dirs=None):
     """Initialize gettext using the system locale."""
     try:
         locale.setlocale(locale.LC_ALL, "")
     except locale.Error:
         pass
-    locale_dirs = [
-        Path(__file__).parent / "translations",
-        Path("/usr/share/locale"),
-        Path.home() / ".local/share/locale",
-    ]
+    if locale_dirs is None:
+        locale_dirs = [
+            Path(__file__).parent / "translations",
+            Path("/usr/share/locale"),
+            Path.home() / ".local/share/locale",
+        ]
     for d in locale_dirs:
-        if d.exists():
-            try:
-                gettext.bindtextdomain(APP_DOMAIN, str(d))
-                gettext.textdomain(APP_DOMAIN)
-                break
-            except (OSError, AttributeError):
-                continue
+        if not d.exists():
+            continue
+        if not any(d.glob(f"*/LC_MESSAGES/{APP_DOMAIN}.mo")):
+            continue
+        try:
+            gettext.bindtextdomain(APP_DOMAIN, str(d))
+            gettext.textdomain(APP_DOMAIN)
+            break
+        except (OSError, AttributeError):
+            continue
     return gettext.gettext
 
 _ = setup_i18n()
