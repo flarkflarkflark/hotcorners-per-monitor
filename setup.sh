@@ -185,23 +185,41 @@ fi
 echo
 say "Installing KWin script"
 
-mkdir -p "${KWIN_DIR}"
-cp -r "${SCRIPT_DIR}/kwin-script/"* "${KWIN_DIR}/"
-ok "Installed to ${KWIN_DIR}"
+# kpackagetool6 does the actual file placement, using the repository's own
+# kwin-script/ directory as the source. This must never be the already-
+# installed target directory: kpackagetool6 --upgrade removes the currently
+# installed package for the source's KPlugin.Id before copying the source
+# in, so if source and target are the same path, it deletes its own source
+# out from under itself and the install is lost. (Reproduced and confirmed
+# against real kpackagetool6 in an isolated HOME before this fix.)
+KWIN_SOURCE="${SCRIPT_DIR}/kwin-script"
 
-# Also register with kpackagetool6 so System Settings sees it.
-# Use upgrade if already installed, install otherwise. Errors are non-fatal —
-# the script also works from ~/.local/share/kwin/scripts/ even without registration.
 if kpackagetool6 --type=KWin/Script --list 2>/dev/null | grep -qx "${SCRIPT_ID}"; then
-    step "Upgrading existing kpackagetool6 registration"
-    kpackagetool6 --type=KWin/Script --upgrade "${KWIN_DIR}" >/dev/null 2>&1 \
-        || warn "kpackagetool6 upgrade returned non-zero (continuing)"
+    step "Upgrading kpackagetool6 registration"
+    if ! kpackagetool6 --type=KWin/Script --upgrade "${KWIN_SOURCE}"; then
+        fail "kpackagetool6 upgrade failed — aborting before touching anything else"
+        exit 1
+    fi
 else
     step "Registering with kpackagetool6"
-    kpackagetool6 --type=KWin/Script --install "${KWIN_DIR}" >/dev/null 2>&1 \
-        || warn "kpackagetool6 install returned non-zero (continuing)"
+    if ! kpackagetool6 --type=KWin/Script --install "${KWIN_SOURCE}"; then
+        fail "kpackagetool6 install failed — aborting before touching anything else"
+        exit 1
+    fi
 fi
-ok "KWin script registered"
+
+step "Verifying installed KWin script files"
+for f in metadata.json contents/code/main.js contents/config/main.xml; do
+    if [ ! -s "${KWIN_DIR}/${f}" ]; then
+        fail "missing or empty after install: ${KWIN_DIR}/${f}"
+        exit 1
+    fi
+done
+if ! kpackagetool6 --type=KWin/Script --list 2>/dev/null | grep -qx "${SCRIPT_ID}"; then
+    fail "kpackagetool6 does not list ${SCRIPT_ID} as installed after install/upgrade"
+    exit 1
+fi
+ok "KWin script installed and verified at ${KWIN_DIR}"
 
 # ----- install GUI -----
 echo
@@ -209,6 +227,7 @@ say "Installing configuration GUI"
 
 mkdir -p "${LIB_DIR}"
 cp "${SCRIPT_DIR}/config-gui/hotcorners_config.py" "${LIB_DIR}/"
+cp "${SCRIPT_DIR}/config-gui/config_schema.py" "${LIB_DIR}/"
 ok "GUI installed to ${LIB_DIR}"
 
 mkdir -p "${BIN_DIR}"
