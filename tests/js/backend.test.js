@@ -947,8 +947,8 @@ test("resolver is called exactly once per trigger", () => {
         }),
     });
     let resolveCalls = 0;
-    const originalResolve = backend.context.resolveContextAction;
-    backend.context.resolveContextAction = function(...args) {
+    const originalResolve = backend.context.resolveContextActionCascade;
+    backend.context.resolveContextActionCascade = function(...args) {
         resolveCalls++;
         return originalResolve(...args);
     };

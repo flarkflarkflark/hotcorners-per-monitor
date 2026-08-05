@@ -376,6 +376,54 @@ function getContextBinding(context, outputName, position) {
     return isObject(binding) ? binding : null;
 }
 
+// Ordered context keys for the normative precedence cascade:
+// combined activity+desktop, activity, desktop. `default` is not included --
+// it is the final fallback and is handled separately by the resolver, because
+// it applies even when no activity or desktop is active at all.
+function buildContextCascadeKeys(activityId, desktopId) {
+    const activity = typeof activityId === "string" ? activityId : "";
+    const desktop = typeof desktopId === "string" ? desktopId : "";
+    const keys = [];
+
+    if (activity && desktop) {
+        keys.push("activity:" + activity + "|desktop:" + desktop);
+    }
+    if (activity) {
+        keys.push("activity:" + activity);
+    }
+    if (desktop) {
+        keys.push("desktop:" + desktop);
+    }
+    return keys;
+}
+
+// Walks the full precedence cascade for one output/position. The first tier
+// holding a resolvable binding wins, so an explicit `none` in a higher tier
+// blocks lower tiers while a missing or malformed binding continues past them.
+function resolveContextActionCascade(config, activityId, desktopId, outputName, position) {
+    if (!isObject(config) || !isObject(config.contexts)) {
+        return null;
+    }
+
+    const contexts = config.contexts;
+    const keys = buildContextCascadeKeys(activityId, desktopId);
+
+    for (let i = 0; i < keys.length; i++) {
+        const context = hasOwn(contexts, keys[i]) ? contexts[keys[i]] : null;
+        const binding = getContextBinding(context, outputName, position);
+        if (isResolvableBinding(binding)) {
+            return clonePlain(binding);
+        }
+    }
+
+    const defaultContext = hasOwn(contexts, "default") ? contexts.default : null;
+    const defaultBinding = getContextBinding(defaultContext, outputName, position);
+    if (!isResolvableBinding(defaultBinding)) {
+        return null;
+    }
+    return clonePlain(defaultBinding);
+}
+
 function resolveContextAction(config, contextKey, outputName, position) {
     if (!isObject(config) || !isObject(config.contexts)) {
         return null;
@@ -604,7 +652,9 @@ function decideTapLinger(state, event, options) {
     return finish(baseState, [], "ignored");
 }
 
-function getCurrentContextKey(screen) {
+// Current activity and per-output desktop identifiers, kept separate so the
+// precedence cascade can try each tier independently.
+function getCurrentContextIds(screen) {
     const activityId = typeof workspace.currentActivity === "string" ?
         workspace.currentActivity : "";
     let desktopId = "";
@@ -617,6 +667,16 @@ function getCurrentContextKey(screen) {
                typeof workspace.currentDesktop.id === "string") {
         desktopId = workspace.currentDesktop.id;
     }
+
+    return {activityId, desktopId};
+}
+
+// The most specific context key for the current state. Used as the interaction
+// label; binding resolution uses the full cascade, not this single key.
+function getCurrentContextKey(screen) {
+    const ids = getCurrentContextIds(screen);
+    const activityId = ids.activityId;
+    const desktopId = ids.desktopId;
 
     if (activityId && desktopId) {
         return "activity:" + activityId + "|desktop:" + desktopId;
@@ -1167,8 +1227,10 @@ function handleCorner(positionName) {
     const outputName = screen.name;
     if (!outputName) return;
 
+    const ids = getCurrentContextIds(screen);
     const contextKey = getCurrentContextKey(screen);
-    const binding = resolveContextAction(runtimeConfig, contextKey, outputName, positionName);
+    const binding = resolveContextActionCascade(
+        runtimeConfig, ids.activityId, ids.desktopId, outputName, positionName);
     if (!binding) return;
 
     beginTapLingerInteraction(outputName, positionName, screen, binding, contextKey);
