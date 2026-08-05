@@ -207,6 +207,17 @@ class GuiInstallTests(unittest.TestCase):
         )
         self.assertIn("IMPORT_OK", probe.stdout)
 
+    def test_fresh_install_writes_every_module_the_gui_imports(self):
+        self._install()
+        gui_dir = self._gui_dir()
+
+        for module in ("hotcorners_config.py", "config_schema.py",
+                       "context_provider.py"):
+            self.assertTrue(
+                (gui_dir / module).exists(),
+                f"{module} must be installed; the GUI imports it at startup",
+            )
+
     def test_uninstall_removes_gui_directory_including_schema(self):
         self._install()
         gui_dir = self._gui_dir()

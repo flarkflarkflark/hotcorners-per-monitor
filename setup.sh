@@ -250,6 +250,16 @@ fi
 chmod --reference="${SCRIPT_DIR}/config-gui/config_schema.py" "${schema_tmp}"
 mv "${schema_tmp}" "${LIB_DIR}/config_schema.py"
 
+provider_tmp="$(mktemp "${LIB_DIR}/context_provider.py.tmp.XXXXXX")"
+cp "${SCRIPT_DIR}/config-gui/context_provider.py" "${provider_tmp}"
+if ! python3 -c "import sys; compile(open(sys.argv[1], 'rb').read(), sys.argv[1], 'exec')" "${provider_tmp}"; then
+    rm -f "${provider_tmp}"
+    fail "Staged context_provider.py failed to compile — aborting before touching the installed copy"
+    exit 1
+fi
+chmod --reference="${SCRIPT_DIR}/config-gui/context_provider.py" "${provider_tmp}"
+mv "${provider_tmp}" "${LIB_DIR}/context_provider.py"
+
 ok "GUI installed to ${LIB_DIR}"
 
 mkdir -p "${BIN_DIR}"

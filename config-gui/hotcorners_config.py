@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
+from context_provider import ContextOption, DBusContextProvider
 from config_schema import (
     DEFAULT_COOLDOWN_MS,
     DEFAULT_LINGER_MS,
@@ -665,9 +666,11 @@ def display_name(monitor: dict) -> str:
 # Context dialog — add/edit v3 context metadata
 # -----------------------------------------------------------------------------
 class ContextDialog(QDialog):
-    def __init__(self, parent=None, *, kind="activity", activity_id="", desktop_id=""):
+    def __init__(self, parent=None, *, kind="activity", activity_id="",
+                 desktop_id="", provider=None):
         super().__init__(parent)
         self.setWindowTitle(_("Context"))
+        self._provider = provider if provider is not None else DBusContextProvider()
         self._build_ui()
         self.set_context(kind, activity_id, desktop_id)
 
@@ -681,18 +684,36 @@ class ContextDialog(QDialog):
         self.kind_combo.addItem(_("Activity"), "activity")
         self.kind_combo.addItem(_("Desktop"), "desktop")
         self.kind_combo.addItem(_("Activity + Desktop"), "activityDesktop")
+        self.kind_combo.setToolTip(_(
+            "Choose what this context depends on. The binding you edit here "
+            "applies only while that activity and/or virtual desktop is current."
+        ))
         self.kind_combo.currentIndexChanged.connect(self._update_visibility)
         layout.addRow(_("Context"), self.kind_combo)
 
-        self.activity_id_edit = QLineEdit()
-        self.activity_id_edit.setPlaceholderText(_("Activity ID"))
-        layout.addRow(_("Activity ID"), self.activity_id_edit)
-        self.activity_id_label = layout.labelForField(self.activity_id_edit)
+        self.activity_combo = QComboBox()
+        self.activity_combo.setToolTip(_(
+            "The activity this context applies to. The name is shown; the "
+            "stable identifier KWin matches on is stored."
+        ))
+        layout.addRow(_("Activity"), self.activity_combo)
+        self.activity_label = layout.labelForField(self.activity_combo)
 
-        self.desktop_id_edit = QLineEdit()
-        self.desktop_id_edit.setPlaceholderText(_("Desktop ID"))
-        layout.addRow(_("Desktop ID"), self.desktop_id_edit)
-        self.desktop_id_label = layout.labelForField(self.desktop_id_edit)
+        self.desktop_combo = QComboBox()
+        self.desktop_combo.setToolTip(_(
+            "The virtual desktop this context applies to. The name is shown; "
+            "the stable identifier KWin matches on is stored."
+        ))
+        layout.addRow(_("Desktop"), self.desktop_combo)
+        self.desktop_label = layout.labelForField(self.desktop_combo)
+
+        self.refresh_button = QPushButton(_("Refresh list"))
+        self.refresh_button.setToolTip(_(
+            "Look up the current activities and virtual desktops again, for "
+            "example after creating or renaming one."
+        ))
+        self.refresh_button.clicked.connect(self.refresh_options)
+        layout.addRow("", self.refresh_button)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -701,31 +722,60 @@ class ContextDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
 
+    def _populate(self, combo, options, selected_id):
+        """Fill a combo with discovered options, keeping a stale saved id."""
+        combo.clear()
+        known = set()
+        for option in options:
+            label = option.name or option.identifier
+            combo.addItem(f"{label} ({option.identifier})", option.identifier)
+            known.add(option.identifier)
+
+        if selected_id and selected_id not in known:
+            # A saved identifier that no longer resolves stays selectable and
+            # is never silently dropped, so the stored context survives.
+            combo.addItem(
+                _("{identifier} — unavailable").format(identifier=selected_id),
+                selected_id,
+            )
+
+        if selected_id:
+            index = combo.findData(selected_id)
+            if index >= 0:
+                combo.setCurrentIndex(index)
+
+    def refresh_options(self):
+        """Re-query the provider, preserving the current selections."""
+        self._populate(
+            self.activity_combo, self._provider.activities(), self.activity_id())
+        self._populate(
+            self.desktop_combo, self._provider.desktops(), self.desktop_id())
+
     def _update_visibility(self):
         kind = self.kind_combo.currentData() or "activity"
         show_activity = kind in {"activity", "activityDesktop"}
         show_desktop = kind in {"desktop", "activityDesktop"}
-        self.activity_id_edit.setVisible(show_activity)
-        self.activity_id_label.setVisible(show_activity)
-        self.desktop_id_edit.setVisible(show_desktop)
-        self.desktop_id_label.setVisible(show_desktop)
+        self.activity_combo.setVisible(show_activity)
+        self.activity_label.setVisible(show_activity)
+        self.desktop_combo.setVisible(show_desktop)
+        self.desktop_label.setVisible(show_desktop)
 
     def set_context(self, kind: str, activity_id: str = "", desktop_id: str = ""):
         idx = self.kind_combo.findData(kind)
         if idx >= 0:
             self.kind_combo.setCurrentIndex(idx)
-        self.activity_id_edit.setText(activity_id or "")
-        self.desktop_id_edit.setText(desktop_id or "")
+        self._populate(self.activity_combo, self._provider.activities(), activity_id or "")
+        self._populate(self.desktop_combo, self._provider.desktops(), desktop_id or "")
         self._update_visibility()
 
     def context_kind(self):
         return self.kind_combo.currentData() or "activity"
 
     def activity_id(self):
-        return self.activity_id_edit.text()
+        return self.activity_combo.currentData() or ""
 
     def desktop_id(self):
-        return self.desktop_id_edit.text()
+        return self.desktop_combo.currentData() or ""
 
 # -----------------------------------------------------------------------------
 # Visual canvas: monitor arrangement with clickable handles
