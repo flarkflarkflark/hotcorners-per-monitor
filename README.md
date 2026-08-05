@@ -136,6 +136,8 @@ The configuration is a single JSON-encoded string stored under the standard KWin
 
 Keys are output names as reported by KWin's `screen.name` (matches the connector name on Wayland and the XRandr output name on X11). Position IDs are `TopLeft`, `Top`, `TopRight`, `Right`, `BottomRight`, `Bottom`, `BottomLeft`, `Left`. Omitted positions default to no action.
 
+This is the simplest supported document shape; it's what a fresh install produces and what v0.1 configuration normalizes into. Command actions, cooldown, tap/linger and context overrides (activity/desktop/default) extend the same document — see `specs/CONFIG_SCHEMA.md` for the complete normative schema, and `CHANGELOG.md` for what's new in v0.2.0.
+
 ## Translating
 
 Translations live in `config-gui/translations/<locale>/LC_MESSAGES/hotcorners-config.po`. To add a new language:
@@ -153,10 +155,11 @@ Pull requests with translations are very welcome.
 
 ## Roadmap
 
-Only v0.1.0 has been tagged and released. Everything past that is implemented
-and tested on `main` but not yet cut into a tagged release — see
-`tasks/todo.md` and `specs/ROADMAP_SPEC.md` for exact status and outstanding
-release gates (translations, uninstall parity, X11 verification, tagging).
+Only v0.1.0 has been tagged and released. v0.2.0 is implemented and tested on
+`main`, currently in release-candidate preparation — see `CHANGELOG.md` for
+the draft release notes, `tasks/todo.md` for the exact outstanding release
+gates (manual platform verification and tagging), and `specs/ROADMAP_SPEC.md`
+for the normative scope.
 
 ### v0.1.0 (tagged, released)
 - Visual monitor arrangement canvas with click-to-configure handles
@@ -164,18 +167,18 @@ release gates (translations, uninstall parity, X11 verification, tagging).
 - Action types: none, invoke shortcut (built-in catalogue + custom)
 - Translations: English, Dutch, German
 
-### Implemented on `main`, not yet released
+### v0.2.0 (release candidate — implemented, not yet tagged)
 - Direct command execution as an action type (in addition to shortcuts), via a session-D-Bus helper with no implicit shell
 - Cooldown per corner to prevent rapid double-fires
 - "Tap vs linger" — short touch does action A, holding for N ms does action B
 - Per-activity and per-virtual-desktop configuration overrides, with default fallback
 - Output ownership fails closed on ambiguous/overlapping/cloned monitor geometry instead of guessing
+- Installer hardening: safe upgrades that can't destroy the running install, and atomic file replacement so an interrupted setup can't leave a broken install
+- Outstanding before tagging: manual X11 verification of the full feature set, a physical smoke-test pass, and interrupted-upgrade/uninstall gates — see `tasks/todo.md`
 
-### Still outstanding
+### Future work (deferred out of v0.2.0, not dropped)
 - French, Spanish, Italian translations (desktop entry, KWin package metadata, and GUI)
 - Activity/desktop discovery in the GUI (currently entered as free text; nothing queries KDE for the available list)
-- Interrupted-upgrade, uninstall, and X11 manual release gates for the current feature set
-- v0.2.0/v0.3.0 tags
 
 ### v0.4.0+
 - Native KWin/System Settings configuration integration

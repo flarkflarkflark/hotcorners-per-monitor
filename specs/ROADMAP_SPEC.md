@@ -10,19 +10,26 @@ Primary users are Plasma 6.4+ users who need different hot-corner and edge behav
 
 ### v0.2.0
 
+Product decision (2026-08-05): v0.2.0 absorbs what this document originally
+scoped as a separate v0.3.0 (tap/linger and contexts), because both were
+implemented and merged together before the original v0.2.0 gates/tag were
+completed. French, Spanish and Italian translations are explicitly deferred
+out of v0.2.0 — see "Deferred" below; they remain planned, not dropped.
+
 - Add a `command` action containing one executable and an argument list.
 - Never invoke an implicit shell; shell behavior requires an explicit executable such as `sh` with `-c` in its arguments.
 - Add a configurable cooldown to each monitor-position binding to suppress rapid repeated activation.
-- Add complete French, Spanish and Italian translations, including desktop metadata.
 - Preserve existing v0.1 shortcut configurations through automatic migration/normalization.
-
-### v0.3.0
-
 - Add tap-versus-linger bindings: leaving before a configurable threshold runs the tap action; remaining until the threshold runs the linger action.
 - Preserve immediate execution for bindings that have no linger action.
 - Add default, per-activity, per-virtual-desktop and combined activity-plus-desktop contexts.
 - Resolve contexts by stable activity and virtual-desktop IDs, while displaying human-readable names.
 - Context precedence: activity+desktop, activity, desktop, default.
+
+#### Deferred (not v0.2.0 scope)
+
+- Complete French, Spanish and Italian translations, including desktop metadata.
+- GUI activity/desktop discovery (activities/desktops are entered as free text in v0.2.0).
 
 ### v0.4.0+
 

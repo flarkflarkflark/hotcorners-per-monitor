@@ -12,6 +12,16 @@
 
 ## v0.2.0
 
+Product decision (2026-08-05): the next public release is v0.2.0, and its
+scope is the implementation currently on `main` — command actions, cooldown,
+tap/linger, and contexts/fallback all ship together as v0.2.0. This folds in
+everything that was previously checklisted as a separate "v0.3.0" (tap/linger,
+contexts, their editor UI) since it was already built and merged (see
+`feature/v0.2-roadmap-foundation`, PR #1) before the old v0.2.0 checkpoint's
+gates and tag were completed. French/Spanish/Italian translations and GUI
+Activity/Desktop discovery are explicitly out of v0.2.0 scope — see
+"Future work" below; they are deferred, not dropped.
+
 - [x] Add Python/JavaScript test harness and v0.1 fixtures.
 - [x] Add normative v0.2 schema, zero-cooldown v0.1 migration and cross-language fixtures.
 - [x] Add invalid/stale configuration protection and unknown-field preservation.
@@ -23,35 +33,33 @@
 - [x] Add no-shell command helper client contract in KWin runtime.
 - [x] Install/remove the helper and D-Bus metadata through an ownership manifest.
 - [x] Add command/cooldown PyQt controls and fix installed gettext lookup.
+- [x] Add the normative tap/linger state machine and output ownership behavior.
+- [x] Add context schema (default/activity/desktop/combined) and lossless v0.2 migration.
+- [x] Add per-binding context fallback and per-output desktop resolution.
+- [x] Add context selector and inheritance UI.
+- [x] Add tap/linger editor UI.
+- [x] Test ambiguous/overlapping output ownership and malformed configuration.
+- [x] Generalize `uninstall.sh` translation-catalog removal to match `setup.sh`'s generic install loop, so any future locale is cleaned up on uninstall instead of only a hardcoded `nl`/`de`.
+- [x] Atomically stage and validate installed GUI/desktop-entry/launcher files before replacing a live install (command-runner helper already did this; KWin package install already had its own fixed/tested contract).
+- [x] Run upgrade and fresh-install gates on live Plasma/KWin 6.7.3 Wayland (see incident/rollback/re-attempt history on the kpackagetool6 destructive-upgrade branch).
+- [x] Update docs/metadata for v0.2.0 (this document, README.md, specs/ROADMAP_SPEC.md, kwin-script/metadata.json, draft release notes).
+- [ ] Prove timer and per-output desktop APIs on Plasma 6.4/current, Wayland/X11. (QTimer capability is proven on Plasma 6.4 Wayland and X11, see `specs/spikes/QTIMER_SPIKE.md` and `specs/spikes/results/`; the per-output desktop API (`currentDesktopForScreen`) is implemented and unit-tested but has no dedicated Plasma 6.4 spike record.)
+- [ ] Run the physical AMD smoke checklist for the full v0.2.0 feature set (see the release-candidate gate plan) — not yet executed.
+- [ ] Run interrupted-upgrade, uninstall, and X11 gates for the full v0.2.0 feature set (commands, cooldown, tap/linger, contexts) — Wayland-only so far.
+- [ ] Run context/activity rename-removal and hot-unplug gates. (Wired in the runtime — `screensChanged` cleanup, unavailable-context preservation — but no recorded manual gate.)
+- [ ] Pass X11 gate for the full v0.2.0 feature set; do not release while required platform support is pending. (Tap/linger timing alone has an X11 pass at Plasma 6.4; commands and contexts have not had a dedicated X11 gate run.)
+- [ ] Prepare and create the `v0.2.0` tag, and publish the release, once the gates above pass.
+
+## Future work (post-v0.2.0)
+
+Deferred out of v0.2.0 scope by product decision (2026-08-05). Still valid,
+not dropped.
+
 - [ ] Add French translation.
 - [ ] Add Spanish translation.
 - [ ] Add Italian translation.
-- [ ] Translate desktop entry and KWin package metadata for fr/es/it; generalize `uninstall.sh` translation removal to match `setup.sh`'s generic install loop (it currently only removes `nl`/`de`, see release-readiness audit).
-- [x] Test ambiguous/overlapping output ownership and malformed configuration.
-- [x] Run upgrade and fresh-install gates on live Plasma/KWin 6.7.3 Wayland (see incident/rollback/re-attempt history on the kpackagetool6 destructive-upgrade branch).
-- [ ] Run interrupted-upgrade, uninstall, and X11 gates (Wayland-only so far; no X11 pass recorded for the current feature set).
-- [ ] Update docs/metadata/changelog and prepare v0.2.0 tag.
-
-## v0.3.0
-
-Implementation of this section is substantially ahead of its checklist
-position: the items below were built and merged (see `feature/v0.2-roadmap-foundation`,
-PR #1) before the v0.2.0 checkpoint's gates and tag were completed. They are
-implemented and unit/integration-tested; they are not yet covered by the
-live/manual gates this checklist still requires, and no v0.3.0 release has
-been tagged. See the release-readiness audit for the implementation-vs-release
-distinction.
-
-- [ ] Prove timer and per-output desktop APIs on Plasma 6.4/current, Wayland/X11. (QTimer capability is proven on Plasma 6.4 Wayland and X11, see `specs/spikes/QTIMER_SPIKE.md` and `specs/spikes/results/`; the per-output desktop API (`currentDesktopForScreen`) is implemented and unit-tested but has no dedicated Plasma 6.4 spike record.)
-- [x] Add the normative tap/linger state machine and output ownership behavior.
-- [x] Add v0.3 context schema and lossless v0.2 migration.
-- [x] Add per-binding context fallback and per-output desktop resolution.
+- [ ] Translate desktop entry and KWin package metadata for fr/es/it.
 - [ ] Add GUI activity/desktop discovery. (Activity/desktop IDs are still entered as free text in the GUI; nothing queries KActivities or KWin for the available list.)
-- [x] Add context selector and inheritance UI.
-- [x] Add tap/linger editor UI.
-- [ ] Run timing/context/rename/removal/hot-unplug and dual-monitor gates. (Tap/linger timing is gated on Plasma 6.4 Wayland and X11, deterministic and real; context/activity rename-removal and hot-unplug are wired in the runtime — `screensChanged` cleanup, unavailable-context preservation — but have no recorded manual gate.)
-- [ ] Pass X11 gate; do not release while required platform support is pending. (Tap/linger timing has an X11 pass at Plasma 6.4; the full v0.3 feature set — contexts, command actions — has not had a dedicated X11 gate run.)
-- [ ] Update docs/metadata/changelog and prepare v0.3.0 tag.
 
 ## v0.4.0
 
