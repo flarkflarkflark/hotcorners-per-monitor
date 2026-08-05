@@ -313,12 +313,10 @@ _("Command program cannot be empty.")
 _("Command program is invalid.")
 _("Command arguments are invalid.")
 _("Cooldown")
-_("Minimum time before this hot zone can trigger again.")
 _("Invalid cooldown value.")
 _("Tap")
 _("Linger")
 _("Linger delay")
-_("Time the cursor must stay before the linger action runs instead of the tap action.")
 _("Invalid linger delay value.")
 _("Context")
 _("Default")
@@ -329,8 +327,6 @@ _("Add Context")
 _("Edit Context")
 _("Remove Context")
 _("Inherit from Default")
-_("Activity ID")
-_("Desktop ID")
 _("A context with this identifier already exists.")
 _("The default context cannot be removed.")
 _("Remove this context?")
@@ -993,9 +989,10 @@ class ActionEditor(QWidget):
 
     actionChanged = pyqtSignal(dict)
 
-    def __init__(self, action: dict, parent=None):
+    def __init__(self, action: dict, parent=None, *, role="tap"):
         super().__init__(parent)
         self._suppress_signals = False
+        self._role = role
         self._draft_actions = {
             "none": dict(NONE_ACTION),
             "shortcut": dict(DEFAULT_SHORTCUT_ACTION),
@@ -1004,6 +1001,26 @@ class ActionEditor(QWidget):
         self.action = dict(NONE_ACTION)
         self._build_ui()
         self.set_action(action)
+
+    def _type_combo_tooltip(self):
+        if self._role == "linger":
+            when = _(
+                "Runs the action after the cursor has stayed in this hot zone "
+                "for the linger delay."
+            )
+        else:
+            when = _(
+                "Runs the action as soon as the cursor reaches this hot zone, "
+                "or on a short touch when a linger action is also set."
+            )
+        return "{when}\n\n{choices}".format(
+            when=when,
+            choices=_(
+                "No action: nothing happens.\n"
+                "Trigger shortcut: invokes a KDE global shortcut.\n"
+                "Command: runs a program directly, without a shell."
+            ),
+        )
 
     def _build_ui(self):
         layout = QFormLayout(self)
@@ -1015,6 +1032,7 @@ class ActionEditor(QWidget):
         self.type_combo.addItem(_("No action"), "none")
         self.type_combo.addItem(_("Trigger shortcut"), "shortcut")
         self.type_combo.addItem(_("Command"), "command")
+        self.type_combo.setToolTip(self._type_combo_tooltip())
         self.type_combo.currentIndexChanged.connect(self._on_type_changed)
         layout.addRow(_("Action:"), self.type_combo)
 
@@ -1022,29 +1040,51 @@ class ActionEditor(QWidget):
         for comp, name, label in builtin_shortcuts():
             self.shortcut_combo.addItem(label, (comp, name))
         self.shortcut_combo.addItem(_("Custom shortcut…"), ("__custom__", ""))
+        self.shortcut_combo.setToolTip(_(
+            "The KDE global shortcut to invoke. Choose \"Custom shortcut…\" to "
+            "enter one that is not in this list."
+        ))
         self.shortcut_combo.currentIndexChanged.connect(self._on_shortcut_changed)
         layout.addRow(_("Shortcut:"), self.shortcut_combo)
         self._shortcut_row_label = layout.labelForField(self.shortcut_combo)
 
         self.custom_component = QLineEdit()
         self.custom_component.setPlaceholderText(_("e.g. kwin"))
+        self.custom_component.setToolTip(_(
+            "The kglobalaccel component that owns the shortcut, such as kwin "
+            "for window management or ksmserver for session actions."
+        ))
         self.custom_component.textChanged.connect(self._on_custom_changed)
         layout.addRow(_("Component:"), self.custom_component)
         self._component_row_label = layout.labelForField(self.custom_component)
 
         self.custom_name = QLineEdit()
         self.custom_name.setPlaceholderText(_("e.g. Overview"))
+        self.custom_name.setToolTip(_(
+            "The exact shortcut name within that component. It must match how "
+            "KDE registered it, including spelling and spaces."
+        ))
         self.custom_name.textChanged.connect(self._on_custom_changed)
         layout.addRow(_("Shortcut name:"), self.custom_name)
         self._name_row_label = layout.labelForField(self.custom_name)
 
         self.command_program = QLineEdit()
+        self.command_program.setToolTip(_(
+            "The program to run. Give a full path, or a bare name to be found "
+            "on PATH. It is executed directly, without a shell, so pipes, "
+            "redirections and variables are not interpreted."
+        ))
         self.command_program.textChanged.connect(self._on_command_changed)
         layout.addRow(_("Program"), self.command_program)
         self._command_program_label = layout.labelForField(self.command_program)
 
         self.command_arguments = QListWidget()
         self.command_arguments.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self.command_arguments.setToolTip(_(
+            "Arguments passed to the program, one entry per argument, in this "
+            "order. Because no shell is involved, each entry is passed through "
+            "literally: do not quote them, and spaces do not split an entry."
+        ))
         layout.addRow(_("Arguments"), self.command_arguments)
         self._command_arguments_label = layout.labelForField(self.command_arguments)
 
@@ -1058,6 +1098,12 @@ class ActionEditor(QWidget):
         self.arg_remove_btn = QPushButton(_("Remove"))
         self.arg_up_btn = QPushButton(_("Move Up"))
         self.arg_down_btn = QPushButton(_("Move Down"))
+
+        self.arg_add_btn.setToolTip(_("Add one argument to the end of the list."))
+        self.arg_edit_btn.setToolTip(_("Change the selected argument."))
+        self.arg_remove_btn.setToolTip(_("Delete the selected argument."))
+        self.arg_up_btn.setToolTip(_("Move the selected argument one place earlier."))
+        self.arg_down_btn.setToolTip(_("Move the selected argument one place later."))
 
         self.arg_add_btn.clicked.connect(self._on_add_argument)
         self.arg_edit_btn.clicked.connect(self._on_edit_argument)
@@ -1381,6 +1427,12 @@ class MainWindow(QMainWindow):
         body_layout.addWidget(canvas_header)
 
         self.canvas = MonitorCanvas(self.monitors, self._canvas_config())
+        self.canvas.setToolTip(_(
+            "Your monitors, arranged as they are on your desk. Click one of "
+            "the eight handles on a monitor — four corners and four edge "
+            "midpoints — to choose which hot zone to configure. Filled "
+            "handles already have an action."
+        ))
         self.canvas.cornerSelected.connect(self._on_corner_selected)
         body_layout.addWidget(self.canvas, 2)
 
@@ -1392,12 +1444,29 @@ class MainWindow(QMainWindow):
         if self.is_v3:
             context_row = QHBoxLayout()
             self.context_combo = QComboBox()
+            self.context_combo.setToolTip(_(
+                "Which situation you are editing bindings for. \"Default\" "
+                "applies whenever no more specific context matches; the others "
+                "apply only in their own activity and/or virtual desktop."
+            ))
             self.context_combo.currentIndexChanged.connect(self._on_context_combo_changed)
             context_row.addWidget(self.context_combo, 1)
 
             self.add_context_btn = QPushButton(_("Add Context"))
             self.edit_context_btn = QPushButton(_("Edit Context"))
             self.remove_context_btn = QPushButton(_("Remove Context"))
+            self.add_context_btn.setToolTip(_(
+                "Create a context for a specific activity, virtual desktop, or "
+                "both, so this monitor's hot zones can behave differently there."
+            ))
+            self.edit_context_btn.setToolTip(_(
+                "Change which activity or virtual desktop the selected context "
+                "applies to. The Default context cannot be changed."
+            ))
+            self.remove_context_btn.setToolTip(_(
+                "Delete the selected context and all bindings in it. Those hot "
+                "zones then fall back to the Default context."
+            ))
             self.add_context_btn.clicked.connect(self._on_add_context)
             self.edit_context_btn.clicked.connect(self._on_edit_context)
             self.remove_context_btn.clicked.connect(self._on_remove_context)
@@ -1406,7 +1475,26 @@ class MainWindow(QMainWindow):
             context_row.addWidget(self.remove_context_btn)
             editor_layout.addLayout(context_row)
 
+            self.context_help_label = QLabel(_(
+                "When a hot zone triggers, the most specific matching context "
+                "wins: activity + desktop, then activity, then desktop, then "
+                "Default."
+            ))
+            self.context_help_label.setWordWrap(True)
+            self.context_help_label.setStyleSheet(
+                "color: palette(mid); font-size: 10pt;")
+            editor_layout.addWidget(self.context_help_label)
+
             self.binding_state_combo = QComboBox()
+            self.binding_state_combo.setToolTip(_(
+                "Whether this hot zone has its own binding in this context.\n\n"
+                "Inherit from Default: no binding here, so the Default "
+                "context's binding is used.\n"
+                "Set here: this context overrides Default.\n\n"
+                "To make a hot zone deliberately do nothing in this context, "
+                "set it here with the action \"No action\" — that blocks the "
+                "fallback instead of inheriting."
+            ))
             self.binding_state_combo.currentIndexChanged.connect(self._on_binding_state_changed)
             editor_layout.addWidget(self.binding_state_combo)
         else:
@@ -1415,6 +1503,7 @@ class MainWindow(QMainWindow):
             self.edit_context_btn = None
             self.remove_context_btn = None
             self.binding_state_combo = None
+            self.context_help_label = None
 
         if self.is_v3:
             tap_group = QGroupBox(_("Tap"))
@@ -1426,7 +1515,7 @@ class MainWindow(QMainWindow):
 
             linger_group = QGroupBox(_("Linger"))
             linger_layout = QVBoxLayout(linger_group)
-            self.linger_action_editor = ActionEditor(dict(NONE_ACTION))
+            self.linger_action_editor = ActionEditor(dict(NONE_ACTION), role="linger")
             self.linger_action_editor.actionChanged.connect(self._on_linger_action_changed)
             linger_layout.addWidget(self.linger_action_editor)
 
@@ -1438,7 +1527,13 @@ class MainWindow(QMainWindow):
             self.linger_delay_spin.setSingleStep(50)
             self.linger_delay_spin.setSuffix(" ms")
             self.linger_delay_spin.setToolTip(_(
-                "Time the cursor must stay before the linger action runs instead of the tap action."
+                "How long the cursor must stay in the hot zone before the "
+                "linger action runs instead of the tap action. "
+                "{minimum}–{maximum} ms; {default} ms by default."
+            ).format(
+                minimum=MIN_LINGER_MS,
+                maximum=MAX_LINGER_MS,
+                default=DEFAULT_LINGER_MS,
             ))
             self.linger_delay_spin.valueChanged.connect(self._on_linger_delay_changed)
             linger_delay_row.addWidget(linger_delay_label)
@@ -1463,7 +1558,11 @@ class MainWindow(QMainWindow):
         self.cooldown_spin.setMaximum(MAX_COOLDOWN_MS)
         self.cooldown_spin.setSingleStep(50)
         self.cooldown_spin.setSuffix(" ms")
-        self.cooldown_spin.setToolTip(_("Minimum time before this hot zone can trigger again."))
+        self.cooldown_spin.setToolTip(_(
+            "Minimum time before this hot zone can trigger again, to stop one "
+            "sweep of the cursor from firing repeatedly. 0–{maximum} ms; 0 "
+            "disables the cooldown."
+        ).format(maximum=MAX_COOLDOWN_MS))
         self.cooldown_spin.valueChanged.connect(self._on_cooldown_changed)
         cooldown_row.addWidget(cooldown_label)
         cooldown_row.addWidget(self.cooldown_spin)
@@ -1504,21 +1603,100 @@ class MainWindow(QMainWindow):
                 "cooldowns are kept exactly as they are."
             ))
             self.upgrade_button.clicked.connect(self._on_upgrade_to_v3)
+        self.help_btn = buttons.addButton(
+            _("Help"), QDialogButtonBox.ButtonRole.HelpRole
+        )
+        self.help_btn.setToolTip(_(
+            "Explain hot zones, actions, cooldown, tap and linger, and contexts."
+        ))
         self.reset_btn = buttons.addButton(
             _("Reload from disk"), QDialogButtonBox.ButtonRole.ResetRole
         )
+        self.reset_btn.setToolTip(_(
+            "Discard unsaved changes and read the configuration from kwinrc "
+            "again. Use this if another program changed the configuration "
+            "while this window was open."
+        ))
         self.close_btn = buttons.addButton(
             _("Close"), QDialogButtonBox.ButtonRole.RejectRole
         )
+        self.close_btn.setToolTip(_("Close this window. Unsaved changes are discarded."))
         self.apply_btn = buttons.addButton(
             _("Apply"), QDialogButtonBox.ButtonRole.ApplyRole
         )
+        self.apply_btn.setToolTip(_(
+            "Save the configuration to kwinrc and reload the KWin script so "
+            "the changes take effect. Nothing is written until you do this."
+        ))
         self.apply_btn.clicked.connect(self._on_apply)
         self.reset_btn.clicked.connect(self._on_reset)
         self.close_btn.clicked.connect(self.close)
+        self.help_btn.clicked.connect(self._on_help)
 
         bl.addWidget(buttons)
         outer.addWidget(button_wrap)
+
+    def help_text(self):
+        """Longer explanations that do not fit in a tooltip."""
+        return _(
+            "<h3>Hot zones</h3>"
+            "<p>Every monitor has eight hot zones: its four corners and the "
+            "midpoint of its four edges. Each one is configured separately, so "
+            "the corners where two monitors meet can be left empty while the "
+            "outer corners stay useful.</p>"
+
+            "<h3>Actions</h3>"
+            "<p><b>No action</b> means pushing the cursor there does nothing. "
+            "<b>Trigger shortcut</b> invokes a KDE global shortcut, such as "
+            "Overview. <b>Command</b> runs a program directly.</p>"
+            "<p>Commands are run <b>without a shell</b>. The program is "
+            "executed as given and each argument is passed through literally, "
+            "so pipes, redirections, wildcards and variables are not "
+            "interpreted. To use shell features, run a shell explicitly, for "
+            "example the program <code>/bin/sh</code> with the arguments "
+            "<code>-c</code> and your command line.</p>"
+
+            "<h3>Cooldown</h3>"
+            "<p>After a hot zone fires, it ignores further triggers until the "
+            "cooldown has passed. This stops a single sweep of the cursor from "
+            "firing an action several times. Set it to 0 to disable it.</p>"
+
+            "<h3>Tap and linger</h3>"
+            "<p>A hot zone can do two different things. The <b>tap</b> action "
+            "runs on a short touch. If a <b>linger</b> action is set, holding "
+            "the cursor in the zone for the linger delay runs that instead. "
+            "Only one of the two ever runs per visit. With no linger action, "
+            "the tap action runs immediately.</p>"
+
+            "<h3>Contexts</h3>"
+            "<p>Bindings can differ per activity and per virtual desktop. When "
+            "a hot zone triggers, the most specific matching context wins:</p>"
+            "<p><b>activity + desktop → activity → desktop → Default</b></p>"
+            "<p>A hot zone with no binding in the current context falls back "
+            "to the next one, and finally to <b>Default</b>. To make a hot "
+            "zone deliberately do nothing in one context, give it the action "
+            "\"No action\" there: that blocks the fallback, which is different "
+            "from leaving it unset.</p>"
+            "<p>Contexts are matched on KDE's internal identifiers, so pick "
+            "activities and desktops from the lists rather than typing names. "
+            "An entry marked <i>unavailable</i> refers to an activity or "
+            "desktop that no longer exists; it is kept, not deleted, so "
+            "nothing is lost if it comes back.</p>"
+
+            "<h3>Applying changes</h3>"
+            "<p>Nothing is written until you choose Apply. If another program "
+            "changes the configuration while this window is open, Apply is "
+            "refused rather than overwriting it — use Reload from disk and "
+            "redo your change.</p>"
+        )
+
+    def _on_help(self):
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle(_("Hot Corners Per Monitor — Help"))
+        dialog.setTextFormat(Qt.TextFormat.RichText)
+        dialog.setText(self.help_text())
+        dialog.setStandardButtons(QMessageBox.StandardButton.Close)
+        dialog.exec()
 
     def _on_upgrade_to_v3(self):
         if self.is_v3 or not self.config_valid:
