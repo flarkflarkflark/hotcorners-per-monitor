@@ -31,6 +31,7 @@ from config_schema import (
     build_command_action,
     create_v2_binding,
     normalize_config_to_v2,
+    migrate_config_v2_to_v3,
     normalize_config_to_v3,
     normalize_action,
     normalize_cooldown_ms,
@@ -1329,7 +1330,7 @@ class MainWindow(QMainWindow):
         canvas_header.setStyleSheet("font-weight: bold;")
         body_layout.addWidget(canvas_header)
 
-        self.canvas = MonitorCanvas(self.monitors, self.config)
+        self.canvas = MonitorCanvas(self.monitors, self._canvas_config())
         self.canvas.cornerSelected.connect(self._on_corner_selected)
         body_layout.addWidget(self.canvas, 2)
 
@@ -1437,6 +1438,22 @@ class MainWindow(QMainWindow):
         bl = QHBoxLayout(button_wrap)
 
         buttons = QDialogButtonBox()
+        if self.is_v3:
+            self.upgrade_button = None
+        else:
+            # Only offered for a legacy document, and only ever applied after
+            # explicit confirmation -- opening the GUI never upgrades.
+            self.upgrade_button = buttons.addButton(
+                _("Enable tap/linger and contexts…"),
+                QDialogButtonBox.ButtonRole.ActionRole,
+            )
+            self.upgrade_button.setToolTip(_(
+                "Upgrade this configuration so each hot zone can have a "
+                "separate tap and linger action, and so bindings can differ "
+                "per activity and virtual desktop. Your existing actions and "
+                "cooldowns are kept exactly as they are."
+            ))
+            self.upgrade_button.clicked.connect(self._on_upgrade_to_v3)
         self.reset_btn = buttons.addButton(
             _("Reload from disk"), QDialogButtonBox.ButtonRole.ResetRole
         )
@@ -1452,6 +1469,71 @@ class MainWindow(QMainWindow):
 
         bl.addWidget(buttons)
         outer.addWidget(button_wrap)
+
+    def _on_upgrade_to_v3(self):
+        if self.is_v3 or not self.config_valid:
+            return
+
+        answer = QMessageBox.question(
+            self,
+            _("Enable tap/linger and contexts?"),
+            _(
+                "This upgrades your configuration so that each hot zone can "
+                "have a separate tap action and linger action, and so that "
+                "bindings can differ per activity and per virtual desktop.\n\n"
+                "What is kept: every action you have configured, and every "
+                "cooldown value, exactly as they are. They become the "
+                "\"Default\" context, which applies whenever no more specific "
+                "context matches.\n\n"
+                "What changes: the configuration is stored in a newer format. "
+                "Nothing is written until you choose Apply, and older versions "
+                "of this tool will not read the new format.\n\n"
+                "Continue?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            upgraded = migrate_config_v2_to_v3(self.config)
+        except InvalidConfig as error:
+            QMessageBox.critical(
+                self, _("Upgrade failed"),
+                _(
+                    "The configuration could not be upgraded, so nothing was "
+                    "changed. Details: {detail}"
+                ).format(detail=str(error)),
+            )
+            return
+
+        selection = self.current_selection
+        self.config = upgraded
+        self.is_v3 = True
+        self.active_context_key = "default"
+        self._local_binding_drafts = {}
+        self._rebuild_editor()
+
+        if selection:
+            self.canvas.select(*selection)
+            self._on_corner_selected(*selection)
+        elif self.monitors:
+            self.canvas.select_first()
+
+    def _rebuild_editor(self):
+        """Rebuild the editor after the document's schema version changed."""
+        self._suppress_binding_signals = True
+        self._suppress_context_signals = True
+        try:
+            self._build_ui()
+        finally:
+            self._suppress_binding_signals = False
+            self._suppress_context_signals = False
+
+        if self.is_v3:
+            self._refresh_context_selector()
+            self._select_context(self.active_context_key, reload_binding=False)
 
     def _canvas_config(self):
         if not self.is_v3:

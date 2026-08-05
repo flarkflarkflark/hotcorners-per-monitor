@@ -306,6 +306,49 @@ def normalize_config_to_v2(config):
     return normalized
 
 
+def migrate_config_v2_to_v3(config):
+    """Convert a schema v2 document into the equivalent schema v3 document.
+
+    Per CONFIG_SCHEMA.md, v2 bindings migrate into ``contexts.default``,
+    mapping ``action`` to ``tap`` and preserving ``cooldownMs`` exactly. No
+    ``linger`` is added: a missing ``linger`` means immediate tap dispatch, so
+    the observable behavior is unchanged. Unknown fields are preserved at the
+    root, monitor and binding levels.
+    """
+    if _is_object(config) and config.get("schemaVersion") == SCHEMA_VERSION_V3:
+        raise InvalidConfig("document is already schema version 3")
+
+    normalized = normalize_config_to_v2(config)
+    monitors = normalized.pop("monitors", {})
+
+    migrated_monitors = {}
+    for output_name, monitor in monitors.items():
+        migrated_monitor = {}
+        for key, value in monitor.items():
+            if key not in POSITIONS:
+                migrated_monitor[key] = deepcopy(value)
+                continue
+
+            binding = deepcopy(value)
+            action = binding.pop("action", None)
+            if action is None:
+                continue
+            # Rebuild so `tap` replaces `action` in place rather than being
+            # appended after the unknown fields.
+            migrated_binding = {"tap": action}
+            migrated_binding.update(binding)
+            migrated_monitor[key] = migrated_binding
+        migrated_monitors[output_name] = migrated_monitor
+
+    migrated = deepcopy(normalized)
+    migrated["schemaVersion"] = SCHEMA_VERSION_V3
+    existing_contexts = migrated.get("contexts")
+    contexts = deepcopy(existing_contexts) if _is_object(existing_contexts) else {}
+    contexts["default"] = {"kind": "default", "monitors": migrated_monitors}
+    migrated["contexts"] = contexts
+    return normalize_config_to_v3(migrated)
+
+
 def normalize_config_to_v3(config):
     if not _is_object(config):
         raise InvalidConfig("configuration root must be an object")
