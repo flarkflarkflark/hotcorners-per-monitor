@@ -37,6 +37,7 @@ class FakeKWin:
         self.reload_count = 0
         self.missing_tools = set()
         self.write_returncode = 0
+        self.reload_returncode = 0
 
     def run(self, command, **kwargs):
         tool = command[0]
@@ -64,6 +65,11 @@ class FakeKWin:
 
         if tool == "qdbus6":
             self.reload_count += 1
+            if self.reload_returncode:
+                return CompletedProcess(
+                    command, self.reload_returncode, stdout="",
+                    stderr="service not registered",
+                )
             return CompletedProcess(command, 0, stdout="", stderr="")
 
         raise AssertionError(f"unexpected command: {command}")
@@ -210,6 +216,49 @@ class SaveFailureClassificationTests(unittest.TestCase):
 
         # The stale message must point at the recovery action.
         self.assertIn("reload", stale.lower())
+
+    def test_reload_command_failure_raises_reload_error_but_keeps_the_write(self):
+        # The write already succeeded; only the post-write reconfigure call
+        # failed. That must surface as its own error rather than being
+        # silently swallowed and reported as "your changes are active now".
+        fake = FakeKWin(self.v2_text)
+        loaded = self.load(fake)
+        fake.reload_returncode = 1
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            with self.assertRaises(self.module.ReloadFailedError) as ctx:
+                self.module.save_config(loaded.document, loaded.baseline)
+
+        self.assertNotIsInstance(ctx.exception, self.module.StaleConfigError)
+        self.assertNotIsInstance(ctx.exception, self.module.MissingToolError)
+        self.assertNotIsInstance(ctx.exception, self.module.ConfigWriteError)
+        # The write itself must not be undone or repeated.
+        self.assertEqual(len(fake.written_payloads), 1)
+        # The exception must carry the already-updated baseline so the
+        # caller does not spuriously detect staleness on the next save.
+        self.assertTrue(ctx.exception.baseline.key_exists)
+
+    def test_missing_qdbus6_raises_reload_error(self):
+        fake = FakeKWin(self.v2_text)
+        loaded = self.load(fake)
+        fake.missing_tools.add("qdbus6")
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            with self.assertRaises(self.module.ReloadFailedError):
+                self.module.save_config(loaded.document, loaded.baseline)
+
+        self.assertEqual(len(fake.written_payloads), 1)
+
+    def test_reload_error_message_does_not_claim_changes_are_active(self):
+        message = self.module.describe_save_error(
+            self.module.ReloadFailedError(
+                self.module.ConfigBaseline(True, "{}"),
+                "qdbus6 exited with status 1",
+            ),
+        )
+        lowered = message.lower()
+        self.assertNotIn("active now", lowered)
+        self.assertIn("qdbus6 exited with status 1", message)
 
     def test_missing_tool_message_names_the_reported_tool(self):
         describe = self.module.describe_save_error

@@ -138,6 +138,20 @@ class InvalidConfigDocumentError(ConfigSaveError):
         self.detail = detail
 
 
+class ReloadFailedError(ConfigSaveError):
+    """Raised when the write succeeded but KWin could not be reconfigured.
+
+    Carries the already-updated baseline: the document on disk did change,
+    so the caller must adopt it to avoid a spurious stale-write detection
+    on the next save, even though this reload attempt could not be confirmed.
+    """
+
+    def __init__(self, baseline: "ConfigBaseline", detail: str = ""):
+        super().__init__(detail or "failed to reload KWin")
+        self.baseline = baseline
+        self.detail = detail
+
+
 def describe_save_error(error: ConfigSaveError) -> str:
     """A specific, actionable message for each distinct save failure."""
     if isinstance(error, StaleConfigError):
@@ -167,6 +181,15 @@ def describe_save_error(error: ConfigSaveError) -> str:
         return _(
             "The configuration could not be prepared for saving, so nothing "
             "was changed. Details: {detail}"
+        ).format(detail=detail)
+
+    if isinstance(error, ReloadFailedError):
+        detail = error.detail or _("no further detail was reported")
+        return _(
+            "Configuration saved, but KWin could not be reloaded "
+            "automatically, so it is not certain your changes are active "
+            "yet. Details: {detail}. Try Apply again, or log out and back "
+            "in."
         ).format(detail=detail)
 
     return _("Saving the configuration failed. Nothing was changed.")
@@ -246,12 +269,16 @@ def save_config(
 
     updated_baseline = ConfigBaseline(True, payload)
     try:
-        subprocess.run(
+        result = subprocess.run(
             ["qdbus6", "org.kde.KWin", "/KWin", "reconfigure"],
-            check=False,
+            check=False, capture_output=True, text=True,
         )
-    except FileNotFoundError:
-        pass
+    except FileNotFoundError as exc:
+        raise ReloadFailedError(updated_baseline, "qdbus6 not found") from exc
+    if result.returncode != 0:
+        raise ReloadFailedError(
+            updated_baseline,
+            f"qdbus6 exited with status {result.returncode}")
     return updated_baseline
 
 # -----------------------------------------------------------------------------
@@ -2331,6 +2358,15 @@ class MainWindow(QMainWindow):
 
         try:
             updated_baseline = save_config(config, self.config_baseline)
+        except ReloadFailedError as error:
+            # The write itself succeeded: adopt the new baseline so the next
+            # save is compared against what is actually on disk, but do not
+            # claim the change is active since the reload was not confirmed.
+            self.config_baseline = error.baseline
+            QMessageBox.warning(
+                self, _("Reload uncertain"), describe_save_error(error),
+            )
+            return
         except ConfigSaveError as error:
             QMessageBox.critical(
                 self, _("Save failed"), describe_save_error(error),

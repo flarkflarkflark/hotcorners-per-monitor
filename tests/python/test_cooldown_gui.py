@@ -280,10 +280,12 @@ class CooldownGuiTests(unittest.TestCase):
         content = POT_PATH.read_text(encoding="utf-8")
         for text in [
             "Cooldown",
-            "Minimum time before this hot zone can trigger again.",
             "Invalid cooldown value.",
         ]:
             self.assertIn(f'msgid "{text}"', content)
+        # The cooldown tooltip now also states units and range, so it wraps
+        # across quoted lines rather than living on a single msgid line.
+        self.assertIn("Minimum time before this hot zone can trigger again", content)
 
 
 if __name__ == "__main__":
