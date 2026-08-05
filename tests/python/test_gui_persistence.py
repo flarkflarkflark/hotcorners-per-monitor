@@ -300,11 +300,9 @@ class GuiPersistenceTests(unittest.TestCase):
             loaded = self.module.load_config()
             original_baseline = loaded.baseline
             fake.fail_next_write = True
-            failed_baseline = self.module.save_config(
-                loaded.document, original_baseline
-            )
+            with self.assertRaises(self.module.ConfigWriteError):
+                self.module.save_config(loaded.document, original_baseline)
 
-            self.assertIsNone(failed_baseline)
             self.assertEqual(loaded.baseline, original_baseline)
             self.assertEqual(fake.reload_count, 0)
 
@@ -349,12 +347,14 @@ class GuiPersistenceTests(unittest.TestCase):
                     self.module.subprocess, "run", side_effect=fake.run
                 ):
                     loaded = self.module.load_config()
-                    saved_baseline = self.module.save_config(
-                        loaded.document, loaded.baseline
-                    )
+                    with self.assertRaises(
+                        self.module.InvalidConfigDocumentError
+                    ):
+                        self.module.save_config(
+                            loaded.document, loaded.baseline
+                        )
 
                 self.assertIsNone(loaded.document)
-                self.assertIsNone(saved_baseline)
                 self.assertEqual(fake.raw, raw)
                 self.assertEqual(fake.write_attempt_count, 0)
                 self.assertEqual(fake.write_count, 0)

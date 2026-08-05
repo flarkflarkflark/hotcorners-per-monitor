@@ -104,8 +104,70 @@ class LoadedConfig:
     baseline: ConfigBaseline
 
 
-class StaleConfigError(RuntimeError):
+class ConfigSaveError(RuntimeError):
+    """Base class for the distinct ways saving the configuration can fail."""
+
+
+class StaleConfigError(ConfigSaveError):
     """Raised when MonitorConfigs changed after it was loaded."""
+
+
+class MissingToolError(ConfigSaveError):
+    """Raised when a required KDE command-line tool is not installed."""
+
+    def __init__(self, tool: str):
+        super().__init__(f"required tool not found: {tool}")
+        self.tool = tool
+
+
+class ConfigWriteError(ConfigSaveError):
+    """Raised when kwriteconfig6 ran but failed to store the configuration."""
+
+    def __init__(self, detail: str = ""):
+        super().__init__(detail or "failed to write the configuration")
+        self.detail = detail
+
+
+class InvalidConfigDocumentError(ConfigSaveError):
+    """Raised when the in-memory document cannot be normalized for saving."""
+
+    def __init__(self, detail: str = ""):
+        super().__init__(detail or "configuration document is not valid")
+        self.detail = detail
+
+
+def describe_save_error(error: ConfigSaveError) -> str:
+    """A specific, actionable message for each distinct save failure."""
+    if isinstance(error, StaleConfigError):
+        return _(
+            "The configuration was changed by another program since this "
+            "window opened it. Your edits were not saved, and nothing was "
+            "overwritten. Choose \"Reload from disk\" to load the current "
+            "configuration, then redo your changes."
+        )
+
+    if isinstance(error, MissingToolError):
+        return _(
+            "The required KDE tool \"{tool}\" was not found. It is normally "
+            "part of Plasma 6. Nothing was changed. Install it, then try "
+            "again."
+        ).format(tool=error.tool)
+
+    if isinstance(error, ConfigWriteError):
+        detail = error.detail or _("no further detail was reported")
+        return _(
+            "Writing the configuration to kwinrc failed, so nothing was "
+            "changed. Details: {detail}"
+        ).format(detail=detail)
+
+    if isinstance(error, InvalidConfigDocumentError):
+        detail = error.detail or _("no further detail was reported")
+        return _(
+            "The configuration could not be prepared for saving, so nothing "
+            "was changed. Details: {detail}"
+        ).format(detail=detail)
+
+    return _("Saving the configuration failed. Nothing was changed.")
 
 
 def _read_config_baseline() -> ConfigBaseline:
@@ -145,17 +207,25 @@ def load_config() -> LoadedConfig:
 def save_config(
         config: dict | None,
         baseline: ConfigBaseline,
-) -> ConfigBaseline | None:
-    """Write v2 config only if its raw baseline is still current."""
+) -> ConfigBaseline:
+    """Write the config only if its raw baseline is still current.
+
+    Raises a specific ConfigSaveError subclass on failure so the caller can
+    tell a concurrent edit apart from a missing tool or a failed write.
+    """
     try:
         if isinstance(config, dict) and config.get("schemaVersion") == 3:
             normalized = normalize_config_to_v3(config)
         else:
             normalized = normalize_config_to_v2(config)
         payload = json.dumps(normalized, separators=(",", ":"))
+    except (ValueError, TypeError) as exc:
+        raise InvalidConfigDocumentError(str(exc)) from exc
+
+    try:
         current = _read_config_baseline()
-    except (ValueError, TypeError, FileNotFoundError):
-        return None
+    except FileNotFoundError as exc:
+        raise MissingToolError("kreadconfig6") from exc
 
     if current != baseline:
         raise StaleConfigError("MonitorConfigs changed since load")
@@ -166,8 +236,11 @@ def save_config(
              "--group", KWINRC_GROUP, "--key", CONFIG_KEY, payload],
             check=True,
         )
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
+    except FileNotFoundError as exc:
+        raise MissingToolError("kwriteconfig6") from exc
+    except subprocess.CalledProcessError as exc:
+        raise ConfigWriteError(
+            f"kwriteconfig6 exited with status {exc.returncode}") from exc
 
     updated_baseline = ConfigBaseline(True, payload)
     try:
@@ -1948,21 +2021,18 @@ class MainWindow(QMainWindow):
 
         try:
             updated_baseline = save_config(config, self.config_baseline)
-        except StaleConfigError:
-            updated_baseline = None
-        if updated_baseline is not None:
-            self.config_baseline = updated_baseline
-            QMessageBox.information(
-                self, _("Saved"),
-                _("Configuration saved. KWin has been reloaded — "
-                  "your changes are active now.")
-            )
-        else:
+        except ConfigSaveError as error:
             QMessageBox.critical(
-                self, _("Save failed"),
-                _("Could not write the configuration. Check that "
-                  "kwriteconfig6 is available on your system.")
+                self, _("Save failed"), describe_save_error(error),
             )
+            return
+
+        self.config_baseline = updated_baseline
+        QMessageBox.information(
+            self, _("Saved"),
+            _("Configuration saved. KWin has been reloaded — "
+              "your changes are active now.")
+        )
 
     def _on_reset(self):
         loaded_config = load_config()
