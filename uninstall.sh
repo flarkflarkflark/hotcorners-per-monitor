@@ -102,10 +102,11 @@ if [ -d "${HOME}/.local/lib/${SCRIPT_ID}" ]; then
     rmdir "${HOME}/.local/lib/${SCRIPT_ID}" 2>/dev/null || true
 fi
 
-# Translations
-for lang in nl de; do
-    mo="${HOME}/.local/share/locale/${lang}/LC_MESSAGES/hotcorners-config.mo"
-    [ -f "$mo" ] && rm -f "$mo" && ok "Removed ${mo}"
+# Translations — remove every installed hotcorners-config catalog,
+# whatever language it's in, rather than a hardcoded language list.
+for mo in "${HOME}/.local/share/locale/"*/LC_MESSAGES/hotcorners-config.mo; do
+    [ -f "$mo" ] || continue
+    rm -f "$mo" && ok "Removed ${mo}"
 done
 
 # Reload KWin so the script is actually unloaded
