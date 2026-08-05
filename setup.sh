@@ -226,16 +226,45 @@ echo
 say "Installing configuration GUI"
 
 mkdir -p "${LIB_DIR}"
-cp "${SCRIPT_DIR}/config-gui/hotcorners_config.py" "${LIB_DIR}/"
-cp "${SCRIPT_DIR}/config-gui/config_schema.py" "${LIB_DIR}/"
+
+# Stage each file next to its destination and only replace the live copy
+# after it validates, so a failed or interrupted staging step can never
+# leave a truncated/broken file in place of a previously-working install.
+gui_tmp="$(mktemp "${LIB_DIR}/hotcorners_config.py.tmp.XXXXXX")"
+cp "${SCRIPT_DIR}/config-gui/hotcorners_config.py" "${gui_tmp}"
+if ! python3 -c "import sys; compile(open(sys.argv[1], 'rb').read(), sys.argv[1], 'exec')" "${gui_tmp}"; then
+    rm -f "${gui_tmp}"
+    fail "Staged hotcorners_config.py failed to compile — aborting before touching the installed copy"
+    exit 1
+fi
+chmod --reference="${SCRIPT_DIR}/config-gui/hotcorners_config.py" "${gui_tmp}"
+mv "${gui_tmp}" "${LIB_DIR}/hotcorners_config.py"
+
+schema_tmp="$(mktemp "${LIB_DIR}/config_schema.py.tmp.XXXXXX")"
+cp "${SCRIPT_DIR}/config-gui/config_schema.py" "${schema_tmp}"
+if ! python3 -c "import sys; compile(open(sys.argv[1], 'rb').read(), sys.argv[1], 'exec')" "${schema_tmp}"; then
+    rm -f "${schema_tmp}"
+    fail "Staged config_schema.py failed to compile — aborting before touching the installed copy"
+    exit 1
+fi
+chmod --reference="${SCRIPT_DIR}/config-gui/config_schema.py" "${schema_tmp}"
+mv "${schema_tmp}" "${LIB_DIR}/config_schema.py"
+
 ok "GUI installed to ${LIB_DIR}"
 
 mkdir -p "${BIN_DIR}"
-cat > "${BIN_DIR}/hotcorners-config" << EOF
+launcher_tmp="$(mktemp "${BIN_DIR}/hotcorners-config.tmp.XXXXXX")"
+cat > "${launcher_tmp}" << EOF
 #!/usr/bin/env bash
 exec python3 "${LIB_DIR}/hotcorners_config.py" "\$@"
 EOF
-chmod +x "${BIN_DIR}/hotcorners-config"
+if ! bash -n "${launcher_tmp}"; then
+    rm -f "${launcher_tmp}"
+    fail "Staged launcher failed syntax check — aborting before touching the installed copy"
+    exit 1
+fi
+chmod 0755 "${launcher_tmp}"
+mv "${launcher_tmp}" "${BIN_DIR}/hotcorners-config"
 ok "Launcher installed to ${BIN_DIR}/hotcorners-config"
 
 # PATH check
@@ -245,7 +274,15 @@ if ! echo ":${PATH}:" | grep -q ":${BIN_DIR}:"; then
 fi
 
 mkdir -p "${DESKTOP_DIR}"
-cp "${SCRIPT_DIR}/config-gui/hotcorners-config.desktop" "${DESKTOP_DIR}/"
+desktop_tmp="$(mktemp "${DESKTOP_DIR}/hotcorners-config.desktop.tmp.XXXXXX")"
+cp "${SCRIPT_DIR}/config-gui/hotcorners-config.desktop" "${desktop_tmp}"
+if [ ! -s "${desktop_tmp}" ] || ! head -n1 "${desktop_tmp}" | grep -qx '\[Desktop Entry\]'; then
+    rm -f "${desktop_tmp}"
+    fail "Staged desktop entry failed validation — aborting before touching the installed copy"
+    exit 1
+fi
+chmod --reference="${SCRIPT_DIR}/config-gui/hotcorners-config.desktop" "${desktop_tmp}"
+mv "${desktop_tmp}" "${DESKTOP_DIR}/hotcorners-config.desktop"
 ok "Desktop entry installed"
 
 if command -v update-desktop-database >/dev/null 2>&1; then
