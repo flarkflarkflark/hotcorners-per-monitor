@@ -1106,14 +1106,18 @@ function cleanupRuntime() {
 function getScreenAtCursor() {
     const pos = workspace.cursorPos;
     const screens = workspace.screens;
+    let match = null;
     for (let i = 0; i < screens.length; i++) {
         const g = screens[i].geometry;
         if (pos.x >= g.x && pos.x < g.x + g.width &&
             pos.y >= g.y && pos.y < g.y + g.height) {
-            return screens[i];
+            if (match !== null) {
+                return null;
+            }
+            match = screens[i];
         }
     }
-    return null;
+    return match;
 }
 
 function isDispatchableAction(action) {
