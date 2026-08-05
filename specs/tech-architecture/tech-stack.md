@@ -17,7 +17,13 @@ Current data flow:
 
 1. The PyQt6 GUI detects outputs through `QGuiApplication.screens()`.
 2. It reads and writes one JSON value, `MonitorConfigs`, in `[Script-hotcorners-per-monitor]` in `kwinrc`.
-3. A KWin reconfigure reloads the JavaScript backend.
+3. A KWin reconfigure (`qdbus6 org.kde.KWin /KWin reconfigure`) is triggered
+   after every Apply. **Unverified:** `main.js` reads `MonitorConfigs` only
+   once, at script bootstrap, with no reconfigure signal wired to reload it;
+   whether the generic reconfigure call actually reloads this script's code
+   (as opposed to only generic workspace settings) has no live evidence
+   equivalent to `specs/spikes/QTIMER_SPIKE.md` and needs a dedicated spike.
+   See `tasks/todo.md`.
 4. The backend registers all eight global electric borders, identifies the output under the pointer, looks up the output/position action and invokes a KDE global shortcut over D-Bus.
 
 Planned data flow:

@@ -43,6 +43,45 @@ Activity/Desktop discovery are explicitly out of v0.2.0 scope — see
 - [x] Atomically stage and validate installed GUI/desktop-entry/launcher files before replacing a live install (command-runner helper already did this; KWin package install already had its own fixed/tested contract).
 - [x] Run upgrade and fresh-install gates on live Plasma/KWin 6.7.3 Wayland (see incident/rollback/re-attempt history on the kpackagetool6 destructive-upgrade branch).
 - [x] Update docs/metadata for v0.2.0 (this document, README.md, specs/ROADMAP_SPEC.md, kwin-script/metadata.json, draft release notes).
+- [x] Fix the runtime context resolution to actually walk the documented
+      activity+desktop -> activity -> desktop -> default cascade instead of
+      resolving only the single most-specific key (20 new JS tests).
+- [x] Fix command-runner D-Bus reply parsing so array/variant-wrapped genuine
+      successes are no longer misreported as `invalid-helper-response`.
+- [x] Distinguish save failure causes (stale write, missing tool, write
+      command failure, invalid document) instead of one generic message; add
+      a further distinct `ReloadFailedError` so a failed/absent post-write
+      `qdbus6 reconfigure` is reported honestly instead of the GUI claiming
+      "your changes are active now" when that was never confirmed.
+- [x] Add an explicit, confirmed v2 -> v3 upgrade action in the GUI (legacy
+      documents no longer require hand-editing JSON to reach tap/linger and
+      contexts).
+- [x] Add GUI activity/desktop discovery via `org.kde.ActivityManager` and
+      KWin's `VirtualDesktopManager` D-Bus interfaces (PyQt6.QtDBus, no new
+      dependency); stale saved identifiers are shown as unavailable and kept,
+      not silently dropped; "Refresh list" re-queries both.
+- [x] Add tooltips and an in-app Help dialog covering hot zones, actions
+      (including the no-shell command guarantee), cooldown, tap/linger, and
+      the context fallback order; German and Dutch translations complete.
+- [ ] **Open, blocking, no workaround invented:** determine whether
+      `qdbus6 org.kde.KWin /KWin reconfigure` (the mechanism `save_config()`
+      currently calls, and that README.md/tech-stack.md currently describe
+      as reloading "the JavaScript backend") actually reloads a running KWin
+      script's *code* (re-running `loadConfig()` in
+      `kwin-script/contents/code/main.js`, which is otherwise only called
+      once at script bootstrap and is wired to no reconfigure signal), or
+      only reloads generic workspace/window-manager settings. This project's
+      own `specs/spikes/QTIMER_SPIKE.md` already proved a different, working
+      mechanism for forcibly reloading this exact script's code —
+      `org.kde.kwin.Scripting.unloadScript`/`loadScript` by package id
+      (`hotcorners-per-monitor`) — but only for an ephemeral probe script
+      installed under a throwaway package id, not for reloading the
+      persistently-installed, currently-running production script. Needs a
+      dedicated live spike (same rigor as `QTIMER_SPIKE.md`) on the required
+      Plasma/KWin 6.4 gates before either keeping `reconfigure` or switching
+      `save_config()`'s reload step to the Scripting interface. Do not tag
+      `v0.2.0` claiming reliable "changes are active now" behavior until
+      this is resolved.
 - [ ] Prove timer and per-output desktop APIs on Plasma 6.4/current, Wayland/X11. (QTimer capability is proven on Plasma 6.4 Wayland and X11, see `specs/spikes/QTIMER_SPIKE.md` and `specs/spikes/results/`; the per-output desktop API (`currentDesktopForScreen`) is implemented and unit-tested but has no dedicated Plasma 6.4 spike record.)
 - [ ] Run the physical AMD smoke checklist for the full v0.2.0 feature set (see the release-candidate gate plan) — not yet executed.
 - [ ] Run interrupted-upgrade, uninstall, and X11 gates for the full v0.2.0 feature set (commands, cooldown, tap/linger, contexts) — Wayland-only so far.
@@ -59,7 +98,6 @@ not dropped.
 - [ ] Add Spanish translation.
 - [ ] Add Italian translation.
 - [ ] Translate desktop entry and KWin package metadata for fr/es/it.
-- [ ] Add GUI activity/desktop discovery. (Activity/desktop IDs are still entered as free text in the GUI; nothing queries KActivities or KWin for the available list.)
 
 ## v0.4.0
 

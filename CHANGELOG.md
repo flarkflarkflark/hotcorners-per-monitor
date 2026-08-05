@@ -30,9 +30,46 @@ created.
 - Installed-GUI translation lookup now correctly finds the user-local
   catalog instead of silently stopping at an unrelated system locale
   directory that happens to exist but has no translation for this app.
+- **Explicit v2 → v3 upgrade**: a legacy (schema version 2) configuration now
+  offers an "Enable tap/linger and contexts…" action in the GUI, gated by
+  confirmation, that migrates every existing action and cooldown into the
+  new `Default` context unchanged. Cancelling leaves the document untouched;
+  merely opening the GUI never upgrades anything.
+- **Activity/desktop discovery**: the context editor now discovers current
+  KDE activities and virtual desktops via `org.kde.ActivityManager` and
+  KWin's `VirtualDesktopManager` D-Bus interfaces and lists them by name,
+  instead of requiring a hand-typed internal identifier. A saved identifier
+  that no longer resolves is shown as "unavailable" and kept, not silently
+  dropped, and a "Refresh list" action re-queries both sources.
+- **Contextual help**: tooltips on every non-obvious control (action type,
+  shortcut fields, command program/arguments, cooldown, tap/linger, context
+  editing) and a Help dialog explaining hot zones, actions, cooldown,
+  tap/linger, and the context fallback order. German and Dutch translations
+  are complete.
 
 ### Fixed
 
+- **Context precedence cascade**: the runtime now actually walks the
+  documented `activity+desktop → activity → desktop → default` fallback
+  order. Previously it resolved only a single most-specific key, so an
+  activity-only or desktop-only override could never match while both an
+  activity and a desktop were active — the normal case, not an edge case.
+  Reproduced live on Plasma/KWin 6.7.3 Wayland before the fix.
+- **Command-runner D-Bus response parsing**: a genuine success reply
+  delivered as a bare array or a variant-wrapped value is now correctly
+  recognized, instead of being misreported as `invalid-helper-response`.
+- **Save failure classification**: stale-write conflicts, a missing
+  `kreadconfig6`/`kwriteconfig6`, a failing write command, and an
+  unnormalizable document now each produce their own actionable message,
+  instead of one generic "check that kwriteconfig6 is available" message
+  that misdescribed every cause as the others. A concurrent external edit
+  reproduced live is no longer reported as a possibly missing tool.
+- A failed or missing post-write `qdbus6 org.kde.KWin /KWin reconfigure`
+  call is no longer silently ignored: the GUI previously always reported
+  "Configuration saved. KWin has been reloaded — your changes are active
+  now," even when that reload step never ran. It is now reported as its own
+  "reload uncertain" outcome, distinct from a failed save, since the write
+  itself did succeed.
 - `setup.sh` no longer passes the live KWin script install directory as
   `kpackagetool6`'s upgrade source — doing so caused `--upgrade` to delete
   its own source before copying, silently leaving no KWin script installed
@@ -79,12 +116,21 @@ created.
   `tasks/todo.md` and the release-candidate gate plan for the exact
   outstanding checklist.
 
+### Known open issue — blocks the release-candidate gate
+
+- It is not yet established whether `qdbus6 org.kde.KWin /KWin reconfigure`
+  (called by the GUI after every save) reloads this project's KWin script's
+  *code* — `kwin-script/contents/code/main.js` only reads `MonitorConfigs`
+  once, at script bootstrap, and is wired to no reconfigure signal — or only
+  reloads generic workspace settings. A dedicated live spike (the same
+  rigor as `specs/spikes/QTIMER_SPIKE.md`) is required before this can be
+  trusted; see `tasks/todo.md`. Until resolved, "changes are active now"
+  after Apply should be treated as unverified, not guaranteed.
+
 ### Deferred to future work (not in v0.2.0)
 
 - French, Spanish and Italian translations (including desktop entry and
   KWin package metadata).
-- Automatic KDE Activity/Desktop discovery in the GUI (activity/desktop IDs
-  are entered as free text for now).
 
 ## v0.1.0 (2026-05-22)
 
