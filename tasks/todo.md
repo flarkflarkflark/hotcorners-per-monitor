@@ -95,13 +95,26 @@ Activity/Desktop discovery are explicitly out of v0.2.0 scope — see
       guard test asserting the installed `hotcorners_config.py` matches the
       repository source byte-for-byte after `setup.sh`, so a stale install
       cannot silently reproduce an already-fixed bug again.
-- [ ] Live-retest *this* fix (distinct from the two rounds above): install
-      this branch with `./setup.sh --yes`, edit `MonitorConfigs` through the
-      GUI and confirm the change is active after exactly one Apply, repeat
-      reload three times, physically verify both Overview corners still
-      work, uninstall and confirm the script stops immediately, reinstall
-      and restore production config. See the exact checklist in the
-      settle-wait-fix commit's final report.
+- [x] Live-retest of the settle-wait fix confirmed the application itself,
+      including single-Apply behavior, now works correctly. It found one
+      separate remaining bug: launching from the Plasma application menu
+      failed with "Could not find the program 'hotcorners-config'", because
+      the installed desktop entry's `Exec` line was the bare command name
+      and a graphical Plasma session does not necessarily inherit
+      `~/.local/bin` in `PATH`, even though the same command works from a
+      shell.
+- [x] Fix the application-menu launcher: `setup.sh` now substitutes the
+      desktop entry's `Exec` line with the absolute installed launcher path
+      (quoted/escaped per the Desktop Entry Specification when needed)
+      instead of shipping a hardcoded or bare command; the repository
+      template stays a portable bare `Exec=hotcorners-config`. Reinstalling
+      also repairs a stale entry from before this fix.
+- [ ] Live-retest the application-menu launcher fix: `./setup.sh --yes`,
+      confirm `~/.local/share/applications/hotcorners-config.desktop`'s
+      `Exec` line is the absolute `~/.local/bin/hotcorners-config` path,
+      run `kbuildsycoca6`, launch from the Plasma application menu, and
+      confirm the shell command `hotcorners-config` still works too. See
+      the exact checklist in the launcher-fix commit's final report.
 - [ ] Prove timer and per-output desktop APIs on Plasma 6.4/current, Wayland/X11. (QTimer capability is proven on Plasma 6.4 Wayland and X11, see `specs/spikes/QTIMER_SPIKE.md` and `specs/spikes/results/`; the per-output desktop API (`currentDesktopForScreen`) is implemented and unit-tested but has no dedicated Plasma 6.4 spike record.)
 - [ ] Run the physical AMD smoke checklist for the full v0.2.0 feature set (see the release-candidate gate plan) — not yet executed.
 - [ ] Run interrupted-upgrade, uninstall, and X11 gates for the full v0.2.0 feature set (commands, cooldown, tap/linger, contexts) — Wayland-only so far.

@@ -93,6 +93,20 @@ created.
   not a formal KWin completion guarantee) between `reconfigure` and the
   script reload sequence, so `readConfig()` sees the value just written on
   the first Apply.
+- **Application-menu launcher**: launching "Hot Corners Per Monitor" from
+  the Plasma application menu could fail with "Could not find the program
+  'hotcorners-config'", even though running `hotcorners-config` from a
+  shell worked. The installed desktop entry's `Exec` line was the bare
+  command name, and a graphical Plasma session does not necessarily
+  inherit `~/.local/bin` in its `PATH`. `setup.sh` now substitutes the
+  `Exec` line with the absolute installed launcher path
+  (`~/.local/bin/hotcorners-config`, quoted/escaped per the Desktop Entry
+  Specification if the path needs it) instead of shipping it hardcoded in
+  the repository template, which stays a portable bare command. Re-running
+  `setup.sh` also repairs a previously-installed entry that still has the
+  old bare `Exec=hotcorners-config` line. The shell command
+  `hotcorners-config` is unaffected and still works for anyone with
+  `~/.local/bin` in their shell `PATH`.
 - `setup.sh` no longer passes the live KWin script install directory as
   `kpackagetool6`'s upgrade source — doing so caused `--upgrade` to delete
   its own source before copying, silently leaving no KWin script installed

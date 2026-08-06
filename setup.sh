@@ -283,9 +283,39 @@ if ! echo ":${PATH}:" | grep -q ":${BIN_DIR}:"; then
     dim "Add to your shell profile: export PATH=\"\$HOME/.local/bin:\$PATH\""
 fi
 
+# Escapes/quotes a value for the Desktop Entry Specification's Exec key
+# (https://specifications.freedesktop.org/desktop-entry-spec/latest/exec-variables.html):
+# reserved characters (space among them) require the whole value to be
+# double-quoted, with backslash, backtick, dollar sign and double quote
+# themselves backslash-escaped inside the quotes.
+desktop_entry_exec_value() {
+    local value="$1"
+    case "$value" in
+        *' '*|*"$(printf '\t')"*|*'"'*|*"'"*|*'`'*|*'$'*|*'\'*|*'<'*|*'>'*|*'~'*|*'|'*|*'&'*|*';'*|*'*'*|*'?'*|*'#'*|*'('*|*')'*)
+            value="${value//\\/\\\\}"
+            value="${value//\"/\\\"}"
+            value="${value//\`/\\\`}"
+            value="${value//\$/\\\$}"
+            printf '"%s"' "$value"
+            ;;
+        *)
+            printf '%s' "$value"
+            ;;
+    esac
+}
+
 mkdir -p "${DESKTOP_DIR}"
 desktop_tmp="$(mktemp "${DESKTOP_DIR}/hotcorners-config.desktop.tmp.XXXXXX")"
-cp "${SCRIPT_DIR}/config-gui/hotcorners-config.desktop" "${desktop_tmp}"
+# Graphical Plasma sessions do not necessarily inherit ~/.local/bin in PATH,
+# so a bare "Exec=hotcorners-config" can leave the application-menu entry
+# unable to find the launcher even though it works from a shell. Substitute
+# the repository template's Exec line with the absolute installed launcher
+# path instead of shipping it hardcoded.
+HCPM_DESKTOP_EXEC="$(desktop_entry_exec_value "${BIN_DIR}/hotcorners-config")"
+awk -v exec_line="Exec=${HCPM_DESKTOP_EXEC}" '
+    /^Exec=/ { print exec_line; next }
+    { print }
+' "${SCRIPT_DIR}/config-gui/hotcorners-config.desktop" > "${desktop_tmp}"
 if [ ! -s "${desktop_tmp}" ] || ! head -n1 "${desktop_tmp}" | grep -qx '\[Desktop Entry\]'; then
     rm -f "${desktop_tmp}"
     fail "Staged desktop entry failed validation — aborting before touching the installed copy"
