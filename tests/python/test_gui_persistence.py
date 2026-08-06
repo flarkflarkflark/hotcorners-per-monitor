@@ -60,6 +60,8 @@ class FakeKWinPersistence:
         if command[0] == "qdbus6":
             path = command[2] if len(command) > 2 else ""
             method = command[3] if len(command) > 3 else ""
+            if path == "/KWin" and method == "reconfigure":
+                return CompletedProcess(command, 0, stdout="", stderr="")
             if path == "/Scripting" and method == "isScriptLoaded":
                 return CompletedProcess(command, 0, stdout="true", stderr="")
             if path == "/Scripting" and method == "unloadScript":

@@ -298,14 +298,27 @@ def _run_kwin_scripting_call(baseline: ConfigBaseline, *args: str):
 
 
 def _reload_kwin_script(baseline: ConfigBaseline) -> None:
-    """Reload the installed Hot Corners KWin script via unloadScript ->
-    loadScript -> Script.run, the sequence proven live to actually reload
-    both the script's code and MonitorConfigs (see KWIN_SCRIPT_PLUGIN_ID).
+    """Reload the installed Hot Corners KWin script via reconfigure ->
+    unloadScript -> loadScript -> Script.run.
+
+    Proven live on Plasma/KWin 6.7.3 Wayland: KWin keeps its own shared,
+    in-process cache of kwinrc, which an external kwriteconfig6 write does
+    not invalidate. A script reloaded via unloadScript/loadScript/run reads
+    that stale cache through readConfig() -- the freshly written value only
+    becomes visible after "qdbus6 org.kde.KWin /KWin reconfigure" forces
+    the cache to reparse from disk. Without this call first, a single Apply
+    writes the correct value but the reloaded script keeps observing the
+    pre-Apply configuration, which only became visible on an unrelated
+    later reload -- physically observed as needing a second Apply.
 
     unloadScript is only called when the script is currently loaded; a
     false/failed unload is only tolerated in that not-loaded case, never
     when the script was known to be loaded.
     """
+    reconfigure_result = _run_kwin_scripting_call(baseline, "/KWin", "reconfigure")
+    if reconfigure_result.returncode != 0:
+        raise ReloadFailedError(baseline, "reconfigure failed")
+
     loaded_result = _run_kwin_scripting_call(
         baseline, "/Scripting", "isScriptLoaded", KWIN_SCRIPT_PLUGIN_ID)
     if loaded_result.returncode != 0:

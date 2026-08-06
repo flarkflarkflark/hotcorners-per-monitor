@@ -92,6 +92,7 @@ class LegacyConfigPersistenceTests(unittest.TestCase):
             stdout=raw, stderr="",
         )
         write_result = CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        reconfigure_result = CompletedProcess(args=[], returncode=0, stdout="", stderr="")
         is_loaded_result = CompletedProcess(args=[], returncode=0, stdout="true", stderr="")
         unload_result = CompletedProcess(args=[], returncode=0, stdout="true", stderr="")
         load_result = CompletedProcess(args=[], returncode=0, stdout="3", stderr="")
@@ -99,7 +100,7 @@ class LegacyConfigPersistenceTests(unittest.TestCase):
 
         with patch.object(
             self.module.subprocess, "run",
-            side_effect=[read_result, read_result, write_result,
+            side_effect=[read_result, read_result, write_result, reconfigure_result,
                          is_loaded_result, unload_result, load_result, run_result],
         ) as run:
             loaded = self.module.load_config()
@@ -108,7 +109,7 @@ class LegacyConfigPersistenceTests(unittest.TestCase):
             )
 
         self.assertIsNotNone(updated_baseline)
-        self.assertEqual(run.call_count, 7)
+        self.assertEqual(run.call_count, 8)
         self.assertEqual(
             run.call_args_list[2].args[0],
             [
@@ -128,17 +129,21 @@ class LegacyConfigPersistenceTests(unittest.TestCase):
         installed_path = self.module.KWIN_SCRIPT_INSTALLED_PATH
         self.assertEqual(
             run.call_args_list[3].args[0],
-            ["qdbus6", "org.kde.KWin", "/Scripting", "isScriptLoaded", plugin_id],
+            ["qdbus6", "org.kde.KWin", "/KWin", "reconfigure"],
         )
         self.assertEqual(
             run.call_args_list[4].args[0],
-            ["qdbus6", "org.kde.KWin", "/Scripting", "unloadScript", plugin_id],
+            ["qdbus6", "org.kde.KWin", "/Scripting", "isScriptLoaded", plugin_id],
         )
         self.assertEqual(
             run.call_args_list[5].args[0],
+            ["qdbus6", "org.kde.KWin", "/Scripting", "unloadScript", plugin_id],
+        )
+        self.assertEqual(
+            run.call_args_list[6].args[0],
             ["qdbus6", "org.kde.KWin", "/Scripting", "loadScript", installed_path, plugin_id],
         )
-        run_command = run.call_args_list[6].args[0]
+        run_command = run.call_args_list[7].args[0]
         self.assertEqual(run_command[:2], ["qdbus6", "org.kde.KWin"])
         self.assertTrue(run_command[2].startswith("/Scripting/Script"))
         self.assertEqual(run_command[3], "org.kde.kwin.Script.run")

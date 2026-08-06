@@ -1,3 +1,4 @@
+import copy
 import importlib.util
 import json
 import os
@@ -30,20 +31,34 @@ def load_config_module():
 class FakeKWin:
     """Models kreadconfig6/kwriteconfig6/qdbus6 with selectable failures.
 
-    The qdbus6 side models the proven-live reload sequence: isScriptLoaded,
-    then (only if loaded) unloadScript, then loadScript, then Script.run on
-    the object path it returns. Each step's exit status and stdout are
-    independently controllable so every failure mode can be reproduced.
+    The qdbus6 side models the proven-live reload sequence: reconfigure,
+    then isScriptLoaded, then (only if loaded) unloadScript, then
+    loadScript, then Script.run on the object path it returns. Each step's
+    exit status and stdout are independently controllable so every failure
+    mode can be reproduced.
+
+    Proven live on Plasma/KWin 6.7.3 Wayland: a freshly (re)loaded script's
+    readConfig() does NOT see a value just written to kwinrc by an external
+    process (kwriteconfig6) until "qdbus6 org.kde.KWin /KWin reconfigure"
+    has been called -- KWin's own shared KConfig object for kwinrc is not
+    reparsed by an external file write. `raw` models the actual on-disk
+    file; `reparsed_raw` models what KWin's in-process config cache
+    currently reflects, which only catches up to `raw` when reconfigure is
+    called. `last_run_observed_config` records what a script reloaded via
+    Script.run() would actually have read via readConfig() at that moment.
     """
 
     def __init__(self, raw):
         self.raw = raw
+        self.reparsed_raw = raw
+        self.last_run_observed_config = None
         self.key_exists = True
         self.written_payloads = []
         self.missing_tools = set()
         self.write_returncode = 0
         self.calls = []
         self.script_loaded = True
+        self.reconfigure_returncode = 0
         self.isloaded_returncode = 0
         self.unload_returncode = 0
         self.unload_stdout = "true"
@@ -80,6 +95,11 @@ class FakeKWin:
             path = command[2] if len(command) > 2 else ""
             method = command[3] if len(command) > 3 else ""
 
+            if path == "/KWin" and method == "reconfigure":
+                self.reparsed_raw = self.raw
+                return CompletedProcess(
+                    command, self.reconfigure_returncode, stdout="", stderr="",
+                )
             if path == "/Scripting" and method == "isScriptLoaded":
                 return CompletedProcess(
                     command, self.isloaded_returncode,
@@ -97,6 +117,7 @@ class FakeKWin:
                     stdout=self.load_stdout, stderr="",
                 )
             if path.startswith("/Scripting/Script") and method == "org.kde.kwin.Script.run":
+                self.last_run_observed_config = self.reparsed_raw
                 return CompletedProcess(
                     command, self.run_returncode, stdout="", stderr="",
                 )
@@ -107,6 +128,7 @@ class FakeKWin:
     def external_set(self, raw):
         self.key_exists = True
         self.raw = raw
+        self.reparsed_raw = raw
 
     def call_methods(self):
         """The qdbus6 method name from each call, in order."""
@@ -220,7 +242,7 @@ class SaveFailureClassificationTests(unittest.TestCase):
         self.assertEqual(len(fake.written_payloads), 1)
         self.assertEqual(
             fake.call_methods(),
-            ["isScriptLoaded", "unloadScript", "loadScript", "org.kde.kwin.Script.run"],
+            ["reconfigure", "isScriptLoaded", "unloadScript", "loadScript", "org.kde.kwin.Script.run"],
         )
 
     def test_each_failure_maps_to_its_own_user_message(self):
@@ -263,7 +285,7 @@ class SaveFailureClassificationTests(unittest.TestCase):
 
         self.assertEqual(
             fake.call_methods(),
-            ["isScriptLoaded", "unloadScript", "loadScript", "org.kde.kwin.Script.run"],
+            ["reconfigure", "isScriptLoaded", "unloadScript", "loadScript", "org.kde.kwin.Script.run"],
         )
 
     def test_reload_uses_the_correct_plugin_id_and_installed_path(self):
@@ -276,7 +298,8 @@ class SaveFailureClassificationTests(unittest.TestCase):
         plugin_id = self.module.KWIN_SCRIPT_PLUGIN_ID
         installed_path = self.module.KWIN_SCRIPT_INSTALLED_PATH
 
-        is_loaded_call, unload_call, load_call, run_call = fake.calls
+        reconfigure_call, is_loaded_call, unload_call, load_call, run_call = fake.calls
+        self.assertEqual(reconfigure_call[1:], ["org.kde.KWin", "/KWin", "reconfigure"])
         self.assertEqual(is_loaded_call[1:], ["org.kde.KWin", "/Scripting", "isScriptLoaded", plugin_id])
         self.assertEqual(unload_call[1:], ["org.kde.KWin", "/Scripting", "unloadScript", plugin_id])
         self.assertEqual(
@@ -298,7 +321,7 @@ class SaveFailureClassificationTests(unittest.TestCase):
         self.assertIsNotNone(updated)
         self.assertEqual(
             fake.call_methods(),
-            ["isScriptLoaded", "loadScript", "org.kde.kwin.Script.run"],
+            ["reconfigure", "isScriptLoaded", "loadScript", "org.kde.kwin.Script.run"],
             "unloadScript must not be called when the script was not loaded",
         )
 
@@ -317,7 +340,7 @@ class SaveFailureClassificationTests(unittest.TestCase):
         # The write itself must not be undone or repeated.
         self.assertEqual(len(fake.written_payloads), 1)
         # loadScript/run must not run after a genuine unload failure.
-        self.assertEqual(fake.call_methods(), ["isScriptLoaded", "unloadScript"])
+        self.assertEqual(fake.call_methods(), ["reconfigure", "isScriptLoaded", "unloadScript"])
         # The exception must carry the already-updated baseline so the
         # caller does not spuriously detect staleness on the next save.
         self.assertTrue(ctx.exception.baseline.key_exists)
@@ -332,7 +355,7 @@ class SaveFailureClassificationTests(unittest.TestCase):
                 self.module.save_config(loaded.document, loaded.baseline)
 
         self.assertEqual(
-            fake.call_methods(), ["isScriptLoaded", "unloadScript", "loadScript"],
+            fake.call_methods(), ["reconfigure", "isScriptLoaded", "unloadScript", "loadScript"],
         )
 
     def test_invalid_script_id_raises_reload_error(self):
@@ -346,7 +369,7 @@ class SaveFailureClassificationTests(unittest.TestCase):
 
         # run() must never be attempted with an unparseable script ID.
         self.assertEqual(
-            fake.call_methods(), ["isScriptLoaded", "unloadScript", "loadScript"],
+            fake.call_methods(), ["reconfigure", "isScriptLoaded", "unloadScript", "loadScript"],
         )
 
     def test_run_command_failure_raises_reload_error(self):
@@ -359,6 +382,67 @@ class SaveFailureClassificationTests(unittest.TestCase):
                 self.module.save_config(loaded.document, loaded.baseline)
 
         self.assertTrue(ctx.exception.baseline.key_exists)
+
+    def test_reconfigure_command_failure_raises_reload_error(self):
+        fake = FakeKWin(self.v2_text)
+        loaded = self.load(fake)
+        fake.reconfigure_returncode = 1
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            with self.assertRaises(self.module.ReloadFailedError):
+                self.module.save_config(loaded.document, loaded.baseline)
+
+        # Nothing past the failed reconfigure must be attempted.
+        self.assertEqual(fake.call_methods(), ["reconfigure"])
+
+    def test_reload_makes_a_config_change_active_on_the_first_save(self):
+        # RC blocker: proven live on Plasma/KWin 6.7.3 Wayland that a freshly
+        # (re)loaded script's readConfig() does not see a value just written
+        # by kwriteconfig6 until KWin's own config cache has been told to
+        # reparse via "qdbus6 org.kde.KWin /KWin reconfigure". Without that
+        # call before the script reload, the change only becomes visible on
+        # a later, unrelated reload -- observed physically as "needs a
+        # second Apply".
+        fake = FakeKWin(self.v2_text)
+        loaded = self.load(fake)
+
+        config = copy.deepcopy(loaded.document)
+        config["monitors"]["DP-1"]["BottomLeft"] = {
+            "action": {"type": "shortcut", "component": "kwin", "name": "Grid View"},
+            "cooldownMs": 0,
+        }
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            self.module.save_config(config, loaded.baseline)
+
+        # The write itself must contain the new binding.
+        self.assertEqual(len(fake.written_payloads), 1)
+        written = json.loads(fake.written_payloads[0])
+        self.assertIn("BottomLeft", written["monitors"]["DP-1"])
+        # The two pre-existing bindings must survive untouched.
+        self.assertEqual(
+            written["monitors"]["DP-1"]["TopLeft"]["action"]["name"], "Overview",
+        )
+        self.assertEqual(
+            written["monitors"]["HDMI-A-1"]["TopRight"]["action"]["name"], "Lock Session",
+        )
+
+        # A single reconfigure -> isScriptLoaded -> unloadScript -> loadScript
+        # -> run sequence -- one reload, not two.
+        self.assertEqual(
+            fake.call_methods(),
+            ["reconfigure", "isScriptLoaded", "unloadScript", "loadScript", "org.kde.kwin.Script.run"],
+        )
+
+        # What the reloaded script would actually have read via readConfig()
+        # must be the value just written -- not a stale pre-write snapshot.
+        self.assertIsNotNone(fake.last_run_observed_config)
+        observed = json.loads(fake.last_run_observed_config)
+        self.assertIn(
+            "BottomLeft", observed["monitors"]["DP-1"],
+            "the reloaded script observed a stale config; the new binding "
+            "would not be active until a second Apply",
+        )
 
     def test_missing_qdbus6_raises_reload_error(self):
         fake = FakeKWin(self.v2_text)
