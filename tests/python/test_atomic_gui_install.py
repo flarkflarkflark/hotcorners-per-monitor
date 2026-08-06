@@ -134,7 +134,7 @@ class AtomicGuiInstallTests(unittest.TestCase):
         repo.mkdir()
         shutil.copy2(ROOT / "setup.sh", repo / "setup.sh")
         shutil.copy2(ROOT / "uninstall.sh", repo / "uninstall.sh")
-        for rel in ("config-gui", "kwin-script", "command-runner"):
+        for rel in ("config-gui", "kwin-script", "command-runner", "assets"):
             shutil.copytree(
                 ROOT / rel, repo / rel,
                 ignore=shutil.ignore_patterns("__pycache__"),

@@ -14,6 +14,7 @@
 set -euo pipefail
 
 SCRIPT_ID="hotcorners-per-monitor"
+XDG_DATA_HOME_EFFECTIVE="${XDG_DATA_HOME:-${HOME}/.local/share}"
 KWIN_DIR="${HOME}/.local/share/kwin/scripts/${SCRIPT_ID}"
 BIN_FILE="${HOME}/.local/bin/hotcorners-config"
 DESKTOP_FILE="${HOME}/.local/share/applications/hotcorners-config.desktop"
@@ -21,6 +22,7 @@ LIB_DIR="${HOME}/.local/share/${SCRIPT_ID}"
 HELPER_LIB_DIR="${HOME}/.local/lib/${SCRIPT_ID}/command-runner"
 HELPER_PY="${HELPER_LIB_DIR}/command_runner.py"
 DBUS_SERVICE_FILE="${HOME}/.local/share/dbus-1/services/org.flark.HotCorners.CommandRunner.service"
+ICON_FILE="${XDG_DATA_HOME_EFFECTIVE}/icons/hicolor/512x512/apps/hotcorners-per-monitor.png"
 BACKUP_FILE="${HOME}/.config/${SCRIPT_ID}-backup-electric-borders.conf"
 
 NONINTERACTIVE=0
@@ -119,7 +121,7 @@ if command -v kpackagetool6 >/dev/null 2>&1; then
     kpackagetool6 --type=KWin/Script --remove "${SCRIPT_ID}" >/dev/null 2>&1 || true
 fi
 
-for path in "${BIN_FILE}" "${DESKTOP_FILE}" "${HELPER_PY}" "${DBUS_SERVICE_FILE}"; do
+for path in "${BIN_FILE}" "${DESKTOP_FILE}" "${HELPER_PY}" "${DBUS_SERVICE_FILE}" "${ICON_FILE}"; do
     if [ -e "${path}" ]; then
         rm -f "${path}"
         ok "Removed ${path}"
@@ -144,6 +146,24 @@ for mo in "${HOME}/.local/share/locale/"*/LC_MESSAGES/hotcorners-config.mo; do
     [ -f "$mo" ] || continue
     rm -f "$mo" && ok "Removed ${mo}"
 done
+
+# Best-effort cache refresh, matching setup.sh's policy: neither cache
+# affects whether the files above were actually removed, so a failure here
+# is reported but never treated as an uninstall failure.
+if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    if kbuildsycoca6 >/dev/null 2>&1; then
+        ok "Refreshed KDE system configuration cache (kbuildsycoca6)"
+    else
+        warn "kbuildsycoca6 failed to refresh the KDE system configuration cache (non-fatal)"
+    fi
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    if gtk-update-icon-cache -q -t -f "${XDG_DATA_HOME_EFFECTIVE}/icons/hicolor" >/dev/null 2>&1; then
+        ok "Refreshed hicolor icon theme cache (gtk-update-icon-cache)"
+    else
+        warn "gtk-update-icon-cache failed to refresh the hicolor icon theme cache (non-fatal)"
+    fi
+fi
 
 echo
 if [ -f "${BACKUP_FILE}" ]; then

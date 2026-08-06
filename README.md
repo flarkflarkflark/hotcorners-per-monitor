@@ -1,5 +1,7 @@
 # Hot Corners Per Monitor
 
+<img src="assets/icons/hotcorners-per-monitor-512.png" alt="Hot Corners Per Monitor icon" width="128" height="128">
+
 Per-monitor hot corners and edge-midpoints for KDE Plasma/KWin.
 
 Hot Corners Per Monitor is a small KDE Plasma/KWin utility for something Plasma does not currently expose in the UI: configurable hot zones for each individual monitor, including inner monitor edges and corners that Plasma's built-in Screen Edges cannot target cleanly.

@@ -19,6 +19,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 SCRIPT_ID="hotcorners-per-monitor"
 
 # Target locations (user-level install — no sudo needed)
+XDG_DATA_HOME_EFFECTIVE="${XDG_DATA_HOME:-${HOME}/.local/share}"
 KWIN_DIR="${HOME}/.local/share/kwin/scripts/${SCRIPT_ID}"
 BIN_DIR="${HOME}/.local/bin"
 DESKTOP_DIR="${HOME}/.local/share/applications"
@@ -28,6 +29,9 @@ HELPER_LIB_DIR="${HOME}/.local/lib/${SCRIPT_ID}/command-runner"
 HELPER_PY="${HELPER_LIB_DIR}/command_runner.py"
 DBUS_SERVICE_DIR="${HOME}/.local/share/dbus-1/services"
 HELPER_SERVICE="${DBUS_SERVICE_DIR}/org.flark.HotCorners.CommandRunner.service"
+ICON_SOURCE="${SCRIPT_DIR}/assets/icons/hotcorners-per-monitor-512.png"
+ICON_DIR="${XDG_DATA_HOME_EFFECTIVE}/icons/hicolor/512x512/apps"
+ICON_FILE="${ICON_DIR}/hotcorners-per-monitor.png"
 PYTHON_BIN="$(command -v python3 || true)"
 
 # Flags
@@ -327,6 +331,58 @@ ok "Desktop entry installed"
 
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "${DESKTOP_DIR}" 2>/dev/null || true
+fi
+
+# ----- install application icon -----
+echo
+say "Installing application icon"
+
+mkdir -p "${ICON_DIR}"
+icon_tmp="$(mktemp "${ICON_FILE}.tmp.XXXXXX")"
+cp "${ICON_SOURCE}" "${icon_tmp}"
+if [ "$(head -c8 "${icon_tmp}" | od -An -tx1 | tr -d ' \n')" != "89504e470d0a1a0a" ]; then
+    rm -f "${icon_tmp}"
+    fail "Staged icon failed PNG signature validation — aborting before touching the installed copy"
+    exit 1
+fi
+if ! cmp -s "${ICON_SOURCE}" "${icon_tmp}"; then
+    rm -f "${icon_tmp}"
+    fail "Staged icon does not match the repository source — aborting before touching the installed copy"
+    exit 1
+fi
+chmod 0644 "${icon_tmp}"
+mv "${icon_tmp}" "${ICON_FILE}"
+if ! cmp -s "${ICON_SOURCE}" "${ICON_FILE}"; then
+    fail "Installed icon verification failed at ${ICON_FILE}"
+    exit 1
+fi
+ok "Icon installed to ${ICON_FILE}"
+
+# ----- refresh icon/desktop caches -----
+# Best-effort, matching the existing update-desktop-database policy above:
+# neither cache is required for the icon/desktop entry files themselves to
+# be correct, so a refresh failure is reported but never aborts setup.
+echo
+say "Refreshing icon/desktop caches"
+
+if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    if kbuildsycoca6 >/dev/null 2>&1; then
+        ok "Refreshed KDE system configuration cache (kbuildsycoca6)"
+    else
+        warn "kbuildsycoca6 failed to refresh the KDE system configuration cache (non-fatal)"
+    fi
+else
+    dim "kbuildsycoca6 not found; skipping (non-fatal)"
+fi
+
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    if gtk-update-icon-cache -q -t -f "${XDG_DATA_HOME_EFFECTIVE}/icons/hicolor" >/dev/null 2>&1; then
+        ok "Refreshed hicolor icon theme cache (gtk-update-icon-cache)"
+    else
+        warn "gtk-update-icon-cache failed to refresh the hicolor icon theme cache (non-fatal)"
+    fi
+else
+    dim "gtk-update-icon-cache not found; skipping (optional, non-fatal)"
 fi
 
 # ----- install command helper -----
