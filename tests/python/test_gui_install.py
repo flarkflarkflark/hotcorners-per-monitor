@@ -121,7 +121,7 @@ class GuiInstallTests(unittest.TestCase):
     def _make_default_fakes(self):
         # Read/write-safe stand-ins for the KDE utilities setup.sh shells
         # out to. None of these touch the real system.
-        for name in ("kwriteconfig6", "kreadconfig6", "update-desktop-database"):
+        for name in ("kwriteconfig6", "kreadconfig6", "update-desktop-database", "sleep"):
             self._write_exe(
                 self.fakebin / name,
                 "#!/usr/bin/env bash\nexit 0\n",
@@ -227,6 +227,21 @@ class GuiInstallTests(unittest.TestCase):
                 (gui_dir / module).exists(),
                 f"{module} must be installed; the GUI imports it at startup",
             )
+
+    def test_installed_gui_matches_repository_source_byte_for_byte(self):
+        # A stale installed GUI copy (from before some repository fix) once
+        # caused a physical retest to reproduce an already-fixed bug,
+        # because the launcher runs the installed copy, not the checkout.
+        # setup.sh must always (re)install the current repository source.
+        self._install()
+        installed = (self._gui_dir() / "hotcorners_config.py").read_bytes()
+        source = (ROOT / "config-gui" / "hotcorners_config.py").read_bytes()
+        self.assertEqual(
+            installed, source,
+            "the installed hotcorners_config.py must match the repository "
+            "source exactly; re-run ./setup.sh --yes after every commit "
+            "that changes it before testing the GUI from the application menu",
+        )
 
     def test_uninstall_removes_gui_directory_including_schema(self):
         self._install()

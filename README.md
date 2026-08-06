@@ -76,12 +76,13 @@ To uninstall everything:
 2. The window shows all your connected monitors at scale, with eight clickable handles per monitor (four corners + four edge midpoints).
 3. Click a handle to select that corner/edge. The editor below shows the current action.
 4. Pick an action from the dropdown — or choose "Custom shortcut" to type a `kglobalaccel` component and shortcut name directly.
-5. Click **Apply**. The GUI saves the configuration, then reloads the Hot
+5. Click **Apply**. The GUI saves the configuration, asks KWin to
+   reconfigure, waits briefly for that to take effect, then reloads the Hot
    Corners script itself (unload, load, run — a plain KWin reconfigure was
-   proven not to pick up either code or configuration changes). If that
-   reload fails (for example, `qdbus6` is missing), you'll see a "Reload
-   uncertain" warning instead of a silent false success — Apply again, or
-   log out and back in.
+   proven not to pick up either code or configuration changes, and proven
+   to need a short settle wait before it does). If that reload fails (for
+   example, `qdbus6` is missing), you'll see a "Reload uncertain" warning
+   instead of a silent false success — Apply again, or log out and back in.
 
 Configured handles fill in with the accent colour so you can see your active setup at a glance. The handles at the inner edges (where two monitors touch) are easy to spot and easy to leave unconfigured — solving the original multi-monitor frustration.
 

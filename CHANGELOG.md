@@ -80,6 +80,19 @@ created.
   `uninstall.sh` now unloads the running script before removing its files
   (best-effort — a D-Bus error is reported but never blocks cleanup),
   instead of relying on the same unproven `reconfigure` call.
+- **Single-Apply activation**: a config change made through the GUI could
+  require a second Apply before it took effect. `reconfigure` is
+  NoReply/fire-and-forget — it returns before KWin has necessarily reparsed
+  its shared, in-process kwinrc cache, and KWin exposes no completion
+  signal for this (confirmed with `dbus-monitor` across a 2s window).
+  Proven live: reloading the script immediately after `reconfigure` still
+  read the *previous* `MonitorConfigs` generation, repeatably; 0.1s was not
+  enough, 0.2s/0.3s were. The GUI's Apply path and `setup.sh` now wait a
+  conservative, documented `KWIN_RECONFIGURE_SETTLE_SECONDS` (0.5s, a
+  compatibility interval with a safety margin over the observed minimum —
+  not a formal KWin completion guarantee) between `reconfigure` and the
+  script reload sequence, so `readConfig()` sees the value just written on
+  the first Apply.
 - `setup.sh` no longer passes the live KWin script install directory as
   `kpackagetool6`'s upgrade source — doing so caused `--upgrade` to delete
   its own source before copying, silently leaving no KWin script installed
@@ -127,10 +140,16 @@ created.
   outstanding checklist.
 - The `unloadScript`/`loadScript`/`Script.run()` reload mechanism was proven
   live on Plasma/KWin 6.7.3 Wayland on this project's AMD development host:
-  a plain `reconfigure` reloaded neither script code nor `MonitorConfigs`;
-  the proven sequence reloaded both, repeated three times with no
-  duplicated `/Scripting` script objects and no `kwin_wayland` restart. The
-  updated `setup.sh`/`uninstall.sh`/GUI code paths built on that evidence
+  a plain `reconfigure` reloaded neither script code nor `MonitorConfigs`,
+  and the reload sequence reliably reloads script *code*, repeated three
+  times with no duplicated `/Scripting` script objects and no
+  `kwin_wayland` restart. A follow-up physical retest then showed that code
+  reload alone is not sufficient for the *config* to be observed on the
+  first Apply: `reconfigure` asynchronously refreshes KWin's own
+  configuration cache with no completion signal available, so a settle
+  wait between `reconfigure` and the reload sequence is also currently
+  required (see "Single-Apply activation" above). The updated
+  `setup.sh`/`uninstall.sh`/GUI code paths built on this combined evidence
   still need their own live install/Apply/uninstall retest — see
   `tasks/todo.md` for the exact checklist.
 

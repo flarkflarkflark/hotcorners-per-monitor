@@ -177,7 +177,7 @@ class KwinScriptInstallTests(unittest.TestCase):
         path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
     def _make_default_fakes(self):
-        for name in ("kwriteconfig6", "kreadconfig6", "update-desktop-database"):
+        for name in ("kwriteconfig6", "kreadconfig6", "update-desktop-database", "sleep"):
             self._write_exe(
                 self.fakebin / name,
                 "#!/usr/bin/env bash\nexit 0\n",

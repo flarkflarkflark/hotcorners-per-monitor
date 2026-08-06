@@ -444,6 +444,19 @@ fi
 # -- main.js only calls loadConfig() once, at bootstrap. The sequence below
 # was proven live to reliably reload both, repeated three times with no
 # duplicated script objects and no kwin_wayland restart.
+#
+# reconfigure is NoReply/fire-and-forget: it returns before KWin has
+# necessarily reparsed its shared, in-process kwinrc cache, and KWin exposes
+# no completion signal for this (confirmed with dbus-monitor across a 2s
+# window). Proven live: reloading the script immediately after reconfigure
+# still read the previous MonitorConfigs generation; 0.1s was not enough,
+# 0.2s/0.3s were. HCPM_RECONFIGURE_SETTLE_SECONDS is therefore not a formal
+# KWin completion guarantee -- it is a conservative compatibility interval
+# with a safety margin over the observed minimum, that must elapse after
+# reconfigure and before the script reload below so readConfig() sees the
+# new value once the script bootstraps.
+HCPM_RECONFIGURE_SETTLE_SECONDS=0.5
+
 echo
 say "Reloading the Hot Corners script"
 
@@ -451,6 +464,12 @@ HCPM_INSTALLED_MAIN_JS="${KWIN_DIR}/contents/code/main.js"
 
 reload_kwin_script() {
     local was_loaded unloaded script_id
+    if ! "${QDBUS}" org.kde.KWin /KWin reconfigure >/dev/null 2>&1; then
+        fail "Could not ask KWin to reconfigure"
+        return 1
+    fi
+    sleep "${HCPM_RECONFIGURE_SETTLE_SECONDS}"
+
     was_loaded="$("${QDBUS}" org.kde.KWin /Scripting isScriptLoaded "${SCRIPT_ID}" 2>/dev/null)"
 
     if [ "${was_loaded}" = "true" ]; then

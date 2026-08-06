@@ -37,15 +37,20 @@ class FakeKWin:
     exit status and stdout are independently controllable so every failure
     mode can be reproduced.
 
-    Proven live on Plasma/KWin 6.7.3 Wayland: a freshly (re)loaded script's
-    readConfig() does NOT see a value just written to kwinrc by an external
-    process (kwriteconfig6) until "qdbus6 org.kde.KWin /KWin reconfigure"
-    has been called -- KWin's own shared KConfig object for kwinrc is not
-    reparsed by an external file write. `raw` models the actual on-disk
-    file; `reparsed_raw` models what KWin's in-process config cache
-    currently reflects, which only catches up to `raw` when reconfigure is
-    called. `last_run_observed_config` records what a script reloaded via
+    Proven live on Plasma/KWin 6.7.3 Wayland: reconfigure is NoReply
+    (fire-and-forget) and does NOT itself make a freshly (re)loaded script's
+    readConfig() see a value just written to kwinrc -- KWin's own shared
+    KConfig object for kwinrc is only reparsed some time after the D-Bus
+    call returns, with no completion signal available. Only the settle wait
+    (mocked time.sleep, via note_settle_wait()) publishes the fresh value in
+    this model, exactly mirroring what was proven live: 0.1s was not
+    enough, 0.2s/0.3s were. `raw` models the actual on-disk file;
+    `reparsed_raw` models what KWin's in-process config cache currently
+    reflects. `last_run_observed_config` records what a script reloaded via
     Script.run() would actually have read via readConfig() at that moment.
+    `timeline` interleaves qdbus6 method names and "sleep:<seconds>" entries
+    in call order, for tests that must prove the wait happens between
+    reconfigure and the reload calls.
     """
 
     def __init__(self, raw):
@@ -57,6 +62,7 @@ class FakeKWin:
         self.missing_tools = set()
         self.write_returncode = 0
         self.calls = []
+        self.timeline = []
         self.script_loaded = True
         self.reconfigure_returncode = 0
         self.isloaded_returncode = 0
@@ -94,9 +100,12 @@ class FakeKWin:
             self.calls.append(list(command))
             path = command[2] if len(command) > 2 else ""
             method = command[3] if len(command) > 3 else ""
+            self.timeline.append(method)
 
             if path == "/KWin" and method == "reconfigure":
-                self.reparsed_raw = self.raw
+                # Deliberately does NOT settle the cache here -- reconfigure
+                # is fire-and-forget; only note_settle_wait() (the mocked
+                # time.sleep) does, matching what was proven live.
                 return CompletedProcess(
                     command, self.reconfigure_returncode, stdout="", stderr="",
                 )
@@ -134,6 +143,14 @@ class FakeKWin:
         """The qdbus6 method name from each call, in order."""
         return [c[3] if len(c) > 3 else "" for c in self.calls]
 
+    def note_settle_wait(self, seconds):
+        """side_effect for the mocked time.sleep(): this, not reconfigure
+        itself, is what publishes the fresh on-disk value into KWin's
+        simulated config cache -- modeling the proven-live race where
+        reconfigure alone is not enough."""
+        self.timeline.append(f"sleep:{seconds}")
+        self.reparsed_raw = self.raw
+
 
 class SaveFailureClassificationTests(unittest.TestCase):
     @classmethod
@@ -142,7 +159,8 @@ class SaveFailureClassificationTests(unittest.TestCase):
         cls.v2_text = V2_FIXTURE_PATH.read_text(encoding="utf-8")
 
     def load(self, fake):
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait):
             return self.module.load_config()
 
     def test_failure_classes_are_distinct_and_share_a_base(self):
@@ -173,7 +191,8 @@ class SaveFailureClassificationTests(unittest.TestCase):
 
         fake.external_set(json.dumps({"schemaVersion": 2, "monitors": {}}))
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait):
             with self.assertRaises(self.module.StaleConfigError):
                 self.module.save_config(loaded.document, loaded.baseline)
 
@@ -185,7 +204,8 @@ class SaveFailureClassificationTests(unittest.TestCase):
         loaded = self.load(fake)
         fake.missing_tools.add("kwriteconfig6")
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait):
             with self.assertRaises(self.module.MissingToolError) as ctx:
                 self.module.save_config(loaded.document, loaded.baseline)
 
@@ -198,7 +218,8 @@ class SaveFailureClassificationTests(unittest.TestCase):
         loaded = self.load(fake)
         fake.missing_tools.add("kreadconfig6")
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait):
             with self.assertRaises(self.module.MissingToolError) as ctx:
                 self.module.save_config(loaded.document, loaded.baseline)
 
@@ -210,7 +231,8 @@ class SaveFailureClassificationTests(unittest.TestCase):
         loaded = self.load(fake)
         fake.write_returncode = 1
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait):
             with self.assertRaises(self.module.ConfigWriteError) as ctx:
                 self.module.save_config(loaded.document, loaded.baseline)
 
@@ -222,7 +244,8 @@ class SaveFailureClassificationTests(unittest.TestCase):
     def test_unnormalizable_document_raises_invalid_document_error(self):
         fake = FakeKWin(self.v2_text)
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait):
             baseline = self.module.load_config().baseline
             with self.assertRaises(self.module.InvalidConfigDocumentError):
                 self.module.save_config({"schemaVersion": 99}, baseline)
@@ -234,7 +257,8 @@ class SaveFailureClassificationTests(unittest.TestCase):
         fake = FakeKWin(self.v2_text)
         loaded = self.load(fake)
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait):
             updated = self.module.save_config(loaded.document, loaded.baseline)
 
         self.assertIsNotNone(updated)
@@ -280,7 +304,8 @@ class SaveFailureClassificationTests(unittest.TestCase):
         fake = FakeKWin(self.v2_text)
         loaded = self.load(fake)
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait):
             self.module.save_config(loaded.document, loaded.baseline)
 
         self.assertEqual(
@@ -288,11 +313,60 @@ class SaveFailureClassificationTests(unittest.TestCase):
             ["reconfigure", "isScriptLoaded", "unloadScript", "loadScript", "org.kde.kwin.Script.run"],
         )
 
+    def test_settle_wait_occurs_after_reconfigure_and_before_reload(self):
+        fake = FakeKWin(self.v2_text)
+        loaded = self.load(fake)
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait) as sleep_mock:
+            self.module.save_config(loaded.document, loaded.baseline)
+
+        self.assertEqual(
+            fake.timeline,
+            [
+                "reconfigure",
+                f"sleep:{self.module.KWIN_RECONFIGURE_SETTLE_SECONDS}",
+                "isScriptLoaded", "unloadScript", "loadScript",
+                "org.kde.kwin.Script.run",
+            ],
+        )
+        # Exactly one wait, with the documented named constant, not a magic number.
+        sleep_mock.assert_called_once_with(self.module.KWIN_RECONFIGURE_SETTLE_SECONDS)
+
+    def test_without_the_settle_wait_the_reload_would_observe_a_stale_config(self):
+        # Proves the fake models the real, proven-live race: reconfigure
+        # alone does not publish the fresh value, only the wait does. This
+        # is what made the previous fix (reconfigure with no wait) pass its
+        # own tests while still failing physically.
+        fake = FakeKWin(self.v2_text)
+        loaded = self.load(fake)
+
+        config = copy.deepcopy(loaded.document)
+        config["monitors"]["DP-1"]["BottomLeft"] = {
+            "action": {"type": "shortcut", "component": "kwin", "name": "Grid View"},
+            "cooldownMs": 0,
+        }
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep"):
+            # time.sleep mocked as a no-op here, WITHOUT note_settle_wait,
+            # so the simulated cache is never told to catch up -- exactly
+            # what a stripped-down "reconfigure, no real wait" fix would do.
+            self.module.save_config(config, loaded.baseline)
+
+        observed = json.loads(fake.last_run_observed_config)
+        self.assertNotIn(
+            "BottomLeft", observed["monitors"]["DP-1"],
+            "sanity check failed: the fake must reproduce the stale-cache "
+            "race when nothing publishes the settled value",
+        )
+
     def test_reload_uses_the_correct_plugin_id_and_installed_path(self):
         fake = FakeKWin(self.v2_text)
         loaded = self.load(fake)
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait):
             self.module.save_config(loaded.document, loaded.baseline)
 
         plugin_id = self.module.KWIN_SCRIPT_PLUGIN_ID
@@ -315,7 +389,8 @@ class SaveFailureClassificationTests(unittest.TestCase):
         loaded = self.load(fake)
         fake.script_loaded = False
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait):
             updated = self.module.save_config(loaded.document, loaded.baseline)
 
         self.assertIsNotNone(updated)
@@ -330,7 +405,8 @@ class SaveFailureClassificationTests(unittest.TestCase):
         loaded = self.load(fake)
         fake.unload_stdout = "false"
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait):
             with self.assertRaises(self.module.ReloadFailedError) as ctx:
                 self.module.save_config(loaded.document, loaded.baseline)
 
@@ -350,7 +426,8 @@ class SaveFailureClassificationTests(unittest.TestCase):
         loaded = self.load(fake)
         fake.load_returncode = 1
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait):
             with self.assertRaises(self.module.ReloadFailedError):
                 self.module.save_config(loaded.document, loaded.baseline)
 
@@ -363,7 +440,8 @@ class SaveFailureClassificationTests(unittest.TestCase):
         loaded = self.load(fake)
         fake.load_stdout = "not-a-number"
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait):
             with self.assertRaises(self.module.ReloadFailedError):
                 self.module.save_config(loaded.document, loaded.baseline)
 
@@ -377,7 +455,8 @@ class SaveFailureClassificationTests(unittest.TestCase):
         loaded = self.load(fake)
         fake.run_returncode = 1
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait):
             with self.assertRaises(self.module.ReloadFailedError) as ctx:
                 self.module.save_config(loaded.document, loaded.baseline)
 
@@ -388,12 +467,15 @@ class SaveFailureClassificationTests(unittest.TestCase):
         loaded = self.load(fake)
         fake.reconfigure_returncode = 1
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait) as sleep_mock:
             with self.assertRaises(self.module.ReloadFailedError):
                 self.module.save_config(loaded.document, loaded.baseline)
 
-        # Nothing past the failed reconfigure must be attempted.
+        # Nothing past the failed reconfigure must be attempted -- not even
+        # the settle wait, let alone the reload sequence.
         self.assertEqual(fake.call_methods(), ["reconfigure"])
+        sleep_mock.assert_not_called()
 
     def test_reload_makes_a_config_change_active_on_the_first_save(self):
         # RC blocker: proven live on Plasma/KWin 6.7.3 Wayland that a freshly
@@ -412,7 +494,8 @@ class SaveFailureClassificationTests(unittest.TestCase):
             "cooldownMs": 0,
         }
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait):
             self.module.save_config(config, loaded.baseline)
 
         # The write itself must contain the new binding.
@@ -449,7 +532,8 @@ class SaveFailureClassificationTests(unittest.TestCase):
         loaded = self.load(fake)
         fake.missing_tools.add("qdbus6")
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep", side_effect=fake.note_settle_wait):
             with self.assertRaises(self.module.ReloadFailedError):
                 self.module.save_config(loaded.document, loaded.baseline)
 

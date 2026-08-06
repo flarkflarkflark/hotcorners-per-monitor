@@ -29,11 +29,14 @@ class FakeKWin:
     """Models kreadconfig6/kwriteconfig6/qdbus6, including KWin's own config
     cache staleness proven live on Plasma/KWin 6.7.3 Wayland: a freshly
     reloaded script's readConfig() sees `reparsed_raw`, which only catches
-    up to the just-written `raw` when "qdbus6 org.kde.KWin /KWin
-    reconfigure" is called. Without that call before the script reload, a
-    single Apply writes the correct value to disk but the reloaded script
-    still observes the pre-Apply value -- physically observed as needing a
-    second Apply before the change takes effect.
+    up to the just-written `raw` once the settle wait after "qdbus6
+    org.kde.KWin /KWin reconfigure" has elapsed (note_settle_wait(), the
+    side_effect for the mocked time.sleep) -- reconfigure itself is
+    NoReply/fire-and-forget and does NOT publish the fresh value on its
+    own. Without both the reconfigure call and the wait before the script
+    reload, a single Apply writes the correct value to disk but the
+    reloaded script still observes the pre-Apply value -- physically
+    observed as needing a second Apply before the change takes effect.
     """
 
     def __init__(self, raw):
@@ -42,7 +45,12 @@ class FakeKWin:
         self.key_exists = True
         self.written_payloads = []
         self.calls = []
+        self.timeline = []
         self.run_observations = []  # reparsed_raw at each Script.run() call
+
+    def note_settle_wait(self, seconds):
+        self.timeline.append(f"sleep:{seconds}")
+        self.reparsed_raw = self.raw
 
     def run(self, command, **kwargs):
         tool = command[0]
@@ -66,9 +74,11 @@ class FakeKWin:
             self.calls.append(list(command))
             path = command[2] if len(command) > 2 else ""
             method = command[3] if len(command) > 3 else ""
+            self.timeline.append(method)
 
             if path == "/KWin" and method == "reconfigure":
-                self.reparsed_raw = self.raw
+                # Deliberately does not settle the cache -- only
+                # note_settle_wait() (the mocked time.sleep) does.
                 return CompletedProcess(command, 0, stdout="", stderr="")
             if path == "/Scripting" and method == "isScriptLoaded":
                 return CompletedProcess(command, 0, stdout="true", stderr="")
@@ -168,6 +178,7 @@ class SingleApplyReloadTests(unittest.TestCase):
         window.action_editor.shortcut_combo.setCurrentIndex(shortcut_idx)
 
         with patch.object(self.gui.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.gui.time, "sleep", side_effect=fake.note_settle_wait), \
                 patch.object(self.gui.QMessageBox, "information") as information, \
                 patch.object(self.gui.QMessageBox, "warning") as warning, \
                 patch.object(self.gui.QMessageBox, "critical") as critical:
@@ -225,6 +236,7 @@ class SingleApplyReloadTests(unittest.TestCase):
         # must already have committed this into the in-memory document.
 
         with patch.object(self.gui.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.gui.time, "sleep", side_effect=fake.note_settle_wait), \
                 patch.object(self.gui.QMessageBox, "information"):
             window._on_apply()
 
@@ -246,6 +258,7 @@ class SingleApplyReloadTests(unittest.TestCase):
         window._on_corner_selected("DP-1", "TopRight")
 
         with patch.object(self.gui.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.gui.time, "sleep", side_effect=fake.note_settle_wait), \
                 patch.object(self.gui.QMessageBox, "information"):
             window._on_apply()
 
@@ -265,6 +278,7 @@ class SingleApplyReloadTests(unittest.TestCase):
         window.action_editor.shortcut_combo.setCurrentIndex(idx)
 
         with patch.object(self.gui.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.gui.time, "sleep", side_effect=fake.note_settle_wait), \
                 patch.object(self.gui.QMessageBox, "information"):
             window._on_apply()
 

@@ -18,16 +18,26 @@ Current data flow:
 1. The PyQt6 GUI detects outputs through `QGuiApplication.screens()`.
 2. It reads and writes one JSON value, `MonitorConfigs`, in `[Script-hotcorners-per-monitor]` in `kwinrc`.
 3. After every Apply, the GUI reloads the KWin script itself via
+   `org.kde.KWin /KWin reconfigure`, then a documented settle wait
+   (`KWIN_RECONFIGURE_SETTLE_SECONDS`, 0.5s), then
    `org.kde.kwin.Scripting`: `unloadScript` -> `loadScript` -> `Script.run()`
    on the returned script ID, using plugin id `hotcorners-per-monitor` and
-   the installed `main.js` path. Proved live on Plasma/KWin 6.7.3 Wayland
-   (repeated three times, no duplicated `/Scripting` objects, no
-   `kwin_wayland` restart) that a plain `qdbus6 org.kde.KWin /KWin
-   reconfigure` reloads neither this script's code nor `MonitorConfigs` --
-   `main.js` only calls `loadConfig()` once, at bootstrap, with no
-   reconfigure signal wired to re-run it -- so this sequence replaced it.
-   `setup.sh` and `uninstall.sh` use the same interface. See `tasks/todo.md`
-   for the still-open live retest of this implementation.
+   the installed `main.js` path. Two things were proved live on Plasma/KWin
+   6.7.3 Wayland: reconfigure alone reloads neither this script's code nor
+   `MonitorConfigs` (`main.js` only calls `loadConfig()` once, at bootstrap,
+   with no reconfigure signal wired to re-run it) -- so the unload/load/run
+   sequence is required for code reload, repeated three times live with no
+   duplicated `/Scripting` objects and no `kwin_wayland` restart; and
+   `reconfigure` refreshes KWin's own kwinrc cache *asynchronously*, with no
+   completion signal available (confirmed with `dbus-monitor`), so the
+   settle wait is also required -- reloading immediately after reconfigure
+   read the previous `MonitorConfigs` generation, repeatably, until enough
+   wall-clock time elapsed. The 0.5s figure is a conservative compatibility
+   interval with a safety margin over the observed minimum (0.1s
+   insufficient, 0.2s/0.3s sufficient), not a formal KWin guarantee.
+   `setup.sh` uses the same interface and wait; `uninstall.sh` only unloads,
+   with no wait needed. See `tasks/todo.md` for the still-open live retest
+   of this implementation.
 4. The backend registers all eight global electric borders, identifies the output under the pointer, looks up the output/position action and invokes a KDE global shortcut over D-Bus.
 
 Planned data flow:

@@ -75,14 +75,33 @@ Activity/Desktop discovery are explicitly out of v0.2.0 scope — see
       `save_config()`, `setup.sh`, and `uninstall.sh` all now use this
       sequence, with focused deterministic tests (fake qdbus6 binaries, no
       live D-Bus in automated tests).
-- [ ] Live-retest the *implementation* of the proven reload mechanism
-      (distinct from the spike that proved the mechanism itself): install
-      this branch, edit `MonitorConfigs` through the GUI and confirm it is
-      active immediately, modify the installed `main.js` with a harmless
-      marker and confirm `setup.sh` picks it up, repeat reload three times,
-      physically verify both Overview corners, uninstall and confirm the
-      script stops immediately, reinstall and restore production config.
-      See the exact checklist in the reload-fix commit's final report.
+- [x] Live-retest the *implementation* of the proven reload mechanism found
+      a real gap: a config change needed a second Apply before it took
+      effect. Root cause, proven live (not guessed): `reconfigure` is
+      NoReply/fire-and-forget and does not itself make a freshly reloaded
+      script's `readConfig()` see a value just written -- KWin's shared
+      kwinrc cache is only reparsed some time after the D-Bus call returns,
+      with no completion signal available (confirmed with `dbus-monitor`
+      across a 2s window). 0.1s was not enough; 0.2s/0.3s were, repeatably.
+      Also separately confirmed the physical retest had initially run a
+      stale installed GUI copy predating the reload-mechanism fix -- the
+      launcher runs the installed copy in `~/.local/share/hotcorners-per-monitor/`,
+      not the checkout; see the guard test below.
+- [x] Add the settle wait: `KWIN_RECONFIGURE_SETTLE_SECONDS` (0.5s, GUI) /
+      `HCPM_RECONFIGURE_SETTLE_SECONDS` (0.5s, `setup.sh`) between
+      `reconfigure` and the script reload sequence. Documented as a
+      conservative compatibility interval with a safety margin over the
+      observed minimum, not a formal KWin completion guarantee. Added a
+      guard test asserting the installed `hotcorners_config.py` matches the
+      repository source byte-for-byte after `setup.sh`, so a stale install
+      cannot silently reproduce an already-fixed bug again.
+- [ ] Live-retest *this* fix (distinct from the two rounds above): install
+      this branch with `./setup.sh --yes`, edit `MonitorConfigs` through the
+      GUI and confirm the change is active after exactly one Apply, repeat
+      reload three times, physically verify both Overview corners still
+      work, uninstall and confirm the script stops immediately, reinstall
+      and restore production config. See the exact checklist in the
+      settle-wait-fix commit's final report.
 - [ ] Prove timer and per-output desktop APIs on Plasma 6.4/current, Wayland/X11. (QTimer capability is proven on Plasma 6.4 Wayland and X11, see `specs/spikes/QTIMER_SPIKE.md` and `specs/spikes/results/`; the per-output desktop API (`currentDesktopForScreen`) is implemented and unit-tested but has no dedicated Plasma 6.4 spike record.)
 - [ ] Run the physical AMD smoke checklist for the full v0.2.0 feature set (see the release-candidate gate plan) — not yet executed.
 - [ ] Run interrupted-upgrade, uninstall, and X11 gates for the full v0.2.0 feature set (commands, cooldown, tap/linger, contexts) — Wayland-only so far.

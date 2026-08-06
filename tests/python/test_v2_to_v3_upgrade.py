@@ -263,6 +263,7 @@ class GuiUpgradeTests(unittest.TestCase):
             window._on_upgrade_to_v3()
 
         with patch.object(self.gui.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.gui.time, "sleep"), \
                 patch.object(self.gui.QMessageBox, "information"):
             window._on_apply()
 
@@ -281,6 +282,7 @@ class GuiUpgradeTests(unittest.TestCase):
             window._on_upgrade_to_v3()
 
         with patch.object(self.gui.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.gui.time, "sleep"), \
                 patch.object(self.gui.QMessageBox, "information"):
             window._on_apply()
 

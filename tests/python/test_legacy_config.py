@@ -102,11 +102,13 @@ class LegacyConfigPersistenceTests(unittest.TestCase):
             self.module.subprocess, "run",
             side_effect=[read_result, read_result, write_result, reconfigure_result,
                          is_loaded_result, unload_result, load_result, run_result],
-        ) as run:
+        ) as run, patch.object(self.module.time, "sleep") as sleep_mock:
             loaded = self.module.load_config()
             updated_baseline = self.module.save_config(
                 self.legacy_config, loaded.baseline
             )
+
+        sleep_mock.assert_called_once_with(self.module.KWIN_RECONFIGURE_SETTLE_SECONDS)
 
         self.assertIsNotNone(updated_baseline)
         self.assertEqual(run.call_count, 8)

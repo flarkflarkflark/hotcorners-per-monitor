@@ -16,6 +16,7 @@ import locale
 import os
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -104,6 +105,20 @@ KWIN_SCRIPT_INSTALLED_PATH = str(
     Path.home() / ".local" / "share" / "kwin" / "scripts" /
     KWIN_SCRIPT_PLUGIN_ID / "contents" / "code" / "main.js"
 )
+
+# "qdbus6 org.kde.KWin /KWin reconfigure" is a NoReply (fire-and-forget) D-Bus
+# call: it returns as soon as the message is dispatched, not once KWin has
+# actually reparsed its shared, in-process kwinrc cache. Proven live on
+# Plasma/KWin 6.7.3 Wayland: reloading the script immediately after
+# reconfigure (no wait) still read the *previous* MonitorConfigs generation,
+# repeatably; 0.1s was not enough, 0.2s and 0.3s were. KWin exposes no
+# completion signal for this (confirmed with dbus-monitor across a 2s
+# window), so this is not a formal completion guarantee -- it is a
+# conservative compatibility interval with a safety margin over the observed
+# minimum, chosen so readConfig() sees the new value once the script
+# bootstraps. It must run after reconfigure and before the script reload
+# sequence below.
+KWIN_RECONFIGURE_SETTLE_SECONDS = 0.5
 
 
 @dataclass(frozen=True)
@@ -318,6 +333,10 @@ def _reload_kwin_script(baseline: ConfigBaseline) -> None:
     reconfigure_result = _run_kwin_scripting_call(baseline, "/KWin", "reconfigure")
     if reconfigure_result.returncode != 0:
         raise ReloadFailedError(baseline, "reconfigure failed")
+
+    # See KWIN_RECONFIGURE_SETTLE_SECONDS: give KWin's shared kwinrc cache
+    # time to reparse before the script reload below re-executes readConfig().
+    time.sleep(KWIN_RECONFIGURE_SETTLE_SECONDS)
 
     loaded_result = _run_kwin_scripting_call(
         baseline, "/Scripting", "isScriptLoaded", KWIN_SCRIPT_PLUGIN_ID)
