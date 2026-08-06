@@ -109,12 +109,15 @@ Activity/Desktop discovery are explicitly out of v0.2.0 scope — see
       instead of shipping a hardcoded or bare command; the repository
       template stays a portable bare `Exec=hotcorners-config`. Reinstalling
       also repairs a stale entry from before this fix.
-- [ ] Live-retest the application-menu launcher fix: `./setup.sh --yes`,
+- [x] Live-retest the application-menu launcher fix: `./setup.sh --yes`,
       confirm `~/.local/share/applications/hotcorners-config.desktop`'s
       `Exec` line is the absolute `~/.local/bin/hotcorners-config` path,
       run `kbuildsycoca6`, launch from the Plasma application menu, and
       confirm the shell command `hotcorners-config` still works too. See
       the exact checklist in the launcher-fix commit's final report.
+      Confirmed live on the primary AMD Plasma/KWin 6.7.3 Wayland host: the
+      application-menu launcher and the direct shell launch both work, and
+      the desktop entry uses the absolute installed launcher path.
 - [ ] Prove timer and per-output desktop APIs on Plasma 6.4/current, Wayland/X11. (QTimer capability is proven on Plasma 6.4 Wayland and X11, see `specs/spikes/QTIMER_SPIKE.md` and `specs/spikes/results/`; the per-output desktop API (`currentDesktopForScreen`) is implemented and unit-tested but has no dedicated Plasma 6.4 spike record.)
 - [ ] Run the physical AMD smoke checklist for the full v0.2.0 feature set (see the release-candidate gate plan) — not yet executed.
 - [ ] Run interrupted-upgrade, uninstall, and X11 gates for the full v0.2.0 feature set (commands, cooldown, tap/linger, contexts) — Wayland-only so far.

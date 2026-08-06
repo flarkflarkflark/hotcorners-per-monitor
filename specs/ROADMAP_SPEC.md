@@ -109,7 +109,7 @@ variant-wrapped, and must not assume a fixed-arity struct.
 
 ## Commands
 
-`tests/run-tests.sh` runs the current Python and JavaScript suites (122 Python tests, 158 JavaScript tests as of this writing). The CMake/CTest commands below apply from v0.4 onward, once the `kcm/` scaffold exists:
+`tests/run-tests.sh` runs the current Python and JavaScript suites (228 Python tests passed, 2 skipped; 192 JavaScript tests, as of this writing). The CMake/CTest commands below apply from v0.4 onward, once the `kcm/` scaffold exists:
 
 ```bash
 ./tests/run-tests.sh                 # all Python and JavaScript tests

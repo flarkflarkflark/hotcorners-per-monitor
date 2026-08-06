@@ -56,7 +56,7 @@ Planned data flow:
 
 ## Signals / Active Considerations
 
-- There are currently no automated tests; every behavioral change is high-risk until a harness exists.
+- Python (`tests/python/`) and JavaScript (`tests/js/`) automated test harnesses exist and run via `tests/run-tests.sh`; see `specs/ROADMAP_SPEC.md` for current counts.
 - `MonitorConfigs` is a shared interface between the GUI and KWin script and needs explicit schema migrations.
 - The published KWin scripting API exposes `registerScreenEdge()`, `callDBus()`, activity/desktop access and cursor signals, but the edge callback carries no output argument.
 - KWin 6.7 source exposes a constructible JavaScript `QTimer`; the published API does not guarantee it, so Plasma 6.4 must be proved experimentally.

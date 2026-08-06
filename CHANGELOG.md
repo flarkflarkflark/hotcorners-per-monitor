@@ -3,11 +3,14 @@
 ## v0.2.0 (release candidate — not yet tagged or released)
 
 **Status: draft.** This entry describes the feature set on `main` as of the
-`release/v0-next-readiness` branch. The physical smoke checklist in
-`specs/spikes/` / the release-candidate gate plan has not been run on this
-system yet — do not read this entry as a claim that live AMD verification is
-complete. It will be updated with real results before the `v0.2.0` tag is
-created.
+`release/v0-next-readiness` branch. A physical retest on the primary AMD
+Plasma/KWin 6.7.3 Wayland host confirmed the reload mechanism, single-Apply
+activation, `setup.sh` install/reload, the application-menu launcher fix, and
+existing shortcut bindings. The full v0.2.0 feature-set smoke checklist
+(command actions, cooldown, tap/linger, context overrides) and the X11 gate
+have **not** yet been run — do not read this entry as a claim that live
+verification of the full feature set is complete. It will be updated with
+real results before the `v0.2.0` tag is created.
 
 ### Added
 
@@ -162,10 +165,15 @@ created.
   first Apply: `reconfigure` asynchronously refreshes KWin's own
   configuration cache with no completion signal available, so a settle
   wait between `reconfigure` and the reload sequence is also currently
-  required (see "Single-Apply activation" above). The updated
-  `setup.sh`/`uninstall.sh`/GUI code paths built on this combined evidence
-  still need their own live install/Apply/uninstall retest — see
-  `tasks/todo.md` for the exact checklist.
+  required (see "Single-Apply activation" above). A follow-up physical
+  retest confirmed the updated `setup.sh`/GUI code paths: a single Apply
+  now activates a newly changed binding immediately, `setup.sh` installs
+  and reloads successfully, the previously-existing shortcut bindings still
+  work, and the application-menu launcher fix (absolute installed launcher
+  path in the desktop entry) works alongside the direct shell launcher.
+  `uninstall.sh` and the command/cooldown/tap-linger/context feature set
+  have not yet had their own live retest — see `tasks/todo.md` for the
+  exact outstanding checklist.
 
 ### Deferred to future work (not in v0.2.0)
 
