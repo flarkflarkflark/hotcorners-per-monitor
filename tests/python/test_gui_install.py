@@ -121,11 +121,21 @@ class GuiInstallTests(unittest.TestCase):
     def _make_default_fakes(self):
         # Read/write-safe stand-ins for the KDE utilities setup.sh shells
         # out to. None of these touch the real system.
-        for name in ("kwriteconfig6", "kreadconfig6", "update-desktop-database", "qdbus6"):
+        for name in ("kwriteconfig6", "kreadconfig6", "update-desktop-database"):
             self._write_exe(
                 self.fakebin / name,
                 "#!/usr/bin/env bash\nexit 0\n",
             )
+        # A minimal but protocol-correct org.kde.KWin /Scripting stand-in:
+        # reports the script as not currently loaded (so setup.sh skips
+        # unloadScript) and returns a valid script ID from loadScript.
+        self._write_exe(
+            self.fakebin / "qdbus6",
+            "#!/usr/bin/env bash\n"
+            "if [ \"${3:-}\" = \"isScriptLoaded\" ]; then echo false; exit 0; fi\n"
+            "if [ \"${3:-}\" = \"loadScript\" ]; then echo 3; exit 0; fi\n"
+            "exit 0\n",
+        )
         self._write_exe(
             self.fakebin / "msgfmt",
             "#!/usr/bin/env bash\ncp \"$1\" \"$3\"\n",

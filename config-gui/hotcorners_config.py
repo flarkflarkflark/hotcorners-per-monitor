@@ -93,6 +93,18 @@ KWINRC_GROUP = "Script-hotcorners-per-monitor"
 CONFIG_KEY = "MonitorConfigs"
 MISSING_CONFIG_SENTINEL_PREFIX = "__HOTCORNERS_PER_MONITOR_MISSING_"
 
+# A plain "qdbus6 org.kde.KWin /KWin reconfigure" was proven live (Plasma/KWin
+# 6.7.3 Wayland) to reload neither this script's code nor MonitorConfigs --
+# main.js only calls loadConfig() once, at bootstrap, with no reconfigure
+# signal wired to re-run it. The sequence below (unload, load, run) was
+# proven live to reliably reload both, repeated three times with no
+# duplicated script objects and no kwin_wayland restart.
+KWIN_SCRIPT_PLUGIN_ID = "hotcorners-per-monitor"
+KWIN_SCRIPT_INSTALLED_PATH = str(
+    Path.home() / ".local" / "share" / "kwin" / "scripts" /
+    KWIN_SCRIPT_PLUGIN_ID / "contents" / "code" / "main.js"
+)
+
 
 @dataclass(frozen=True)
 class ConfigBaseline:
@@ -139,7 +151,8 @@ class InvalidConfigDocumentError(ConfigSaveError):
 
 
 class ReloadFailedError(ConfigSaveError):
-    """Raised when the write succeeded but KWin could not be reconfigured.
+    """Raised when the write succeeded but the Hot Corners KWin script could
+    not be reloaded (unloadScript/loadScript/Script.run).
 
     Carries the already-updated baseline: the document on disk did change,
     so the caller must adopt it to avoid a spurious stale-write detection
@@ -147,7 +160,7 @@ class ReloadFailedError(ConfigSaveError):
     """
 
     def __init__(self, baseline: "ConfigBaseline", detail: str = ""):
-        super().__init__(detail or "failed to reload KWin")
+        super().__init__(detail or "failed to reload the Hot Corners script")
         self.baseline = baseline
         self.detail = detail
 
@@ -186,10 +199,10 @@ def describe_save_error(error: ConfigSaveError) -> str:
     if isinstance(error, ReloadFailedError):
         detail = error.detail or _("no further detail was reported")
         return _(
-            "Configuration saved, but KWin could not be reloaded "
-            "automatically, so it is not certain your changes are active "
-            "yet. Details: {detail}. Try Apply again, or log out and back "
-            "in."
+            "Configuration saved, but the Hot Corners script could not be "
+            "reloaded automatically, so it is not certain your changes are "
+            "active yet. Details: {detail}. Try Apply again, or log out and "
+            "back in."
         ).format(detail=detail)
 
     return _("Saving the configuration failed. Nothing was changed.")
@@ -268,18 +281,61 @@ def save_config(
             f"kwriteconfig6 exited with status {exc.returncode}") from exc
 
     updated_baseline = ConfigBaseline(True, payload)
+    _reload_kwin_script(updated_baseline)
+    return updated_baseline
+
+
+def _run_kwin_scripting_call(baseline: ConfigBaseline, *args: str):
+    """Run one qdbus6 call against org.kde.KWin, raising ReloadFailedError
+    on a missing qdbus6 binary rather than letting it propagate raw."""
     try:
-        result = subprocess.run(
-            ["qdbus6", "org.kde.KWin", "/KWin", "reconfigure"],
+        return subprocess.run(
+            ["qdbus6", "org.kde.KWin", *args],
             check=False, capture_output=True, text=True,
         )
     except FileNotFoundError as exc:
-        raise ReloadFailedError(updated_baseline, "qdbus6 not found") from exc
-    if result.returncode != 0:
+        raise ReloadFailedError(baseline, "qdbus6 not found") from exc
+
+
+def _reload_kwin_script(baseline: ConfigBaseline) -> None:
+    """Reload the installed Hot Corners KWin script via unloadScript ->
+    loadScript -> Script.run, the sequence proven live to actually reload
+    both the script's code and MonitorConfigs (see KWIN_SCRIPT_PLUGIN_ID).
+
+    unloadScript is only called when the script is currently loaded; a
+    false/failed unload is only tolerated in that not-loaded case, never
+    when the script was known to be loaded.
+    """
+    loaded_result = _run_kwin_scripting_call(
+        baseline, "/Scripting", "isScriptLoaded", KWIN_SCRIPT_PLUGIN_ID)
+    if loaded_result.returncode != 0:
+        raise ReloadFailedError(baseline, "isScriptLoaded failed")
+    was_loaded = loaded_result.stdout.strip() == "true"
+
+    if was_loaded:
+        unload_result = _run_kwin_scripting_call(
+            baseline, "/Scripting", "unloadScript", KWIN_SCRIPT_PLUGIN_ID)
+        if unload_result.returncode != 0 or unload_result.stdout.strip() != "true":
+            raise ReloadFailedError(baseline, "unloadScript failed")
+
+    load_result = _run_kwin_scripting_call(
+        baseline, "/Scripting", "loadScript",
+        KWIN_SCRIPT_INSTALLED_PATH, KWIN_SCRIPT_PLUGIN_ID)
+    if load_result.returncode != 0:
+        raise ReloadFailedError(baseline, "loadScript failed")
+    try:
+        script_id = int(load_result.stdout.strip())
+    except ValueError as exc:
         raise ReloadFailedError(
-            updated_baseline,
-            f"qdbus6 exited with status {result.returncode}")
-    return updated_baseline
+            baseline, "loadScript returned no script ID") from exc
+    if script_id < 0:
+        raise ReloadFailedError(
+            baseline, "loadScript returned an invalid script ID")
+
+    run_result = _run_kwin_scripting_call(
+        baseline, f"/Scripting/Script{script_id}", "org.kde.kwin.Script.run")
+    if run_result.returncode != 0:
+        raise ReloadFailedError(baseline, "Script.run failed")
 
 # -----------------------------------------------------------------------------
 # Action catalog
@@ -2376,7 +2432,7 @@ class MainWindow(QMainWindow):
         self.config_baseline = updated_baseline
         QMessageBox.information(
             self, _("Saved"),
-            _("Configuration saved. KWin has been reloaded — "
+            _("Configuration saved. The Hot Corners script was reloaded — "
               "your changes are active now.")
         )
 

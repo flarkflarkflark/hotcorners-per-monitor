@@ -28,16 +28,28 @@ def load_config_module():
 
 
 class FakeKWin:
-    """Models kreadconfig6/kwriteconfig6/qdbus6 with selectable failures."""
+    """Models kreadconfig6/kwriteconfig6/qdbus6 with selectable failures.
+
+    The qdbus6 side models the proven-live reload sequence: isScriptLoaded,
+    then (only if loaded) unloadScript, then loadScript, then Script.run on
+    the object path it returns. Each step's exit status and stdout are
+    independently controllable so every failure mode can be reproduced.
+    """
 
     def __init__(self, raw):
         self.raw = raw
         self.key_exists = True
         self.written_payloads = []
-        self.reload_count = 0
         self.missing_tools = set()
         self.write_returncode = 0
-        self.reload_returncode = 0
+        self.calls = []
+        self.script_loaded = True
+        self.isloaded_returncode = 0
+        self.unload_returncode = 0
+        self.unload_stdout = "true"
+        self.load_returncode = 0
+        self.load_stdout = "3"
+        self.run_returncode = 0
 
     def run(self, command, **kwargs):
         tool = command[0]
@@ -64,19 +76,41 @@ class FakeKWin:
             return CompletedProcess(command, 0, stdout="", stderr="")
 
         if tool == "qdbus6":
-            self.reload_count += 1
-            if self.reload_returncode:
+            self.calls.append(list(command))
+            path = command[2] if len(command) > 2 else ""
+            method = command[3] if len(command) > 3 else ""
+
+            if path == "/Scripting" and method == "isScriptLoaded":
                 return CompletedProcess(
-                    command, self.reload_returncode, stdout="",
-                    stderr="service not registered",
+                    command, self.isloaded_returncode,
+                    stdout=("true" if self.script_loaded else "false"),
+                    stderr="",
                 )
-            return CompletedProcess(command, 0, stdout="", stderr="")
+            if path == "/Scripting" and method == "unloadScript":
+                return CompletedProcess(
+                    command, self.unload_returncode,
+                    stdout=self.unload_stdout, stderr="",
+                )
+            if path == "/Scripting" and method == "loadScript":
+                return CompletedProcess(
+                    command, self.load_returncode,
+                    stdout=self.load_stdout, stderr="",
+                )
+            if path.startswith("/Scripting/Script") and method == "org.kde.kwin.Script.run":
+                return CompletedProcess(
+                    command, self.run_returncode, stdout="", stderr="",
+                )
+            raise AssertionError(f"unexpected qdbus6 command: {command}")
 
         raise AssertionError(f"unexpected command: {command}")
 
     def external_set(self, raw):
         self.key_exists = True
         self.raw = raw
+
+    def call_methods(self):
+        """The qdbus6 method name from each call, in order."""
+        return [c[3] if len(c) > 3 else "" for c in self.calls]
 
 
 class SaveFailureClassificationTests(unittest.TestCase):
@@ -122,7 +156,7 @@ class SaveFailureClassificationTests(unittest.TestCase):
                 self.module.save_config(loaded.document, loaded.baseline)
 
         self.assertEqual(fake.written_payloads, [])
-        self.assertEqual(fake.reload_count, 0)
+        self.assertEqual(fake.calls, [])
 
     def test_missing_kwriteconfig6_raises_missing_tool_not_stale(self):
         fake = FakeKWin(self.v2_text)
@@ -135,7 +169,7 @@ class SaveFailureClassificationTests(unittest.TestCase):
 
         self.assertEqual(ctx.exception.tool, "kwriteconfig6")
         self.assertNotIsInstance(ctx.exception, self.module.StaleConfigError)
-        self.assertEqual(fake.reload_count, 0)
+        self.assertEqual(fake.calls, [])
 
     def test_missing_kreadconfig6_raises_missing_tool_not_stale(self):
         fake = FakeKWin(self.v2_text)
@@ -161,7 +195,7 @@ class SaveFailureClassificationTests(unittest.TestCase):
         self.assertNotIsInstance(ctx.exception, self.module.StaleConfigError)
         self.assertNotIsInstance(ctx.exception, self.module.MissingToolError)
         self.assertEqual(fake.written_payloads, [])
-        self.assertEqual(fake.reload_count, 0)
+        self.assertEqual(fake.calls, [])
 
     def test_unnormalizable_document_raises_invalid_document_error(self):
         fake = FakeKWin(self.v2_text)
@@ -172,7 +206,7 @@ class SaveFailureClassificationTests(unittest.TestCase):
                 self.module.save_config({"schemaVersion": 99}, baseline)
 
         self.assertEqual(fake.written_payloads, [])
-        self.assertEqual(fake.reload_count, 0)
+        self.assertEqual(fake.calls, [])
 
     def test_successful_save_returns_updated_baseline(self):
         fake = FakeKWin(self.v2_text)
@@ -184,7 +218,10 @@ class SaveFailureClassificationTests(unittest.TestCase):
         self.assertIsNotNone(updated)
         self.assertTrue(updated.key_exists)
         self.assertEqual(len(fake.written_payloads), 1)
-        self.assertEqual(fake.reload_count, 1)
+        self.assertEqual(
+            fake.call_methods(),
+            ["isScriptLoaded", "unloadScript", "loadScript", "org.kde.kwin.Script.run"],
+        )
 
     def test_each_failure_maps_to_its_own_user_message(self):
         # The GUI must not describe an infrastructure failure as a
@@ -217,13 +254,58 @@ class SaveFailureClassificationTests(unittest.TestCase):
         # The stale message must point at the recovery action.
         self.assertIn("reload", stale.lower())
 
-    def test_reload_command_failure_raises_reload_error_but_keeps_the_write(self):
-        # The write already succeeded; only the post-write reconfigure call
-        # failed. That must surface as its own error rather than being
-        # silently swallowed and reported as "your changes are active now".
+    def test_reload_calls_are_in_order_unload_then_load_then_run(self):
         fake = FakeKWin(self.v2_text)
         loaded = self.load(fake)
-        fake.reload_returncode = 1
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            self.module.save_config(loaded.document, loaded.baseline)
+
+        self.assertEqual(
+            fake.call_methods(),
+            ["isScriptLoaded", "unloadScript", "loadScript", "org.kde.kwin.Script.run"],
+        )
+
+    def test_reload_uses_the_correct_plugin_id_and_installed_path(self):
+        fake = FakeKWin(self.v2_text)
+        loaded = self.load(fake)
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            self.module.save_config(loaded.document, loaded.baseline)
+
+        plugin_id = self.module.KWIN_SCRIPT_PLUGIN_ID
+        installed_path = self.module.KWIN_SCRIPT_INSTALLED_PATH
+
+        is_loaded_call, unload_call, load_call, run_call = fake.calls
+        self.assertEqual(is_loaded_call[1:], ["org.kde.KWin", "/Scripting", "isScriptLoaded", plugin_id])
+        self.assertEqual(unload_call[1:], ["org.kde.KWin", "/Scripting", "unloadScript", plugin_id])
+        self.assertEqual(
+            load_call[1:],
+            ["org.kde.KWin", "/Scripting", "loadScript", installed_path, plugin_id],
+        )
+        self.assertEqual(run_call[1], "org.kde.KWin")
+        self.assertTrue(run_call[2].startswith("/Scripting/Script"))
+        self.assertEqual(run_call[3], "org.kde.kwin.Script.run")
+
+    def test_script_not_loaded_skips_unload_and_still_succeeds(self):
+        fake = FakeKWin(self.v2_text)
+        loaded = self.load(fake)
+        fake.script_loaded = False
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            updated = self.module.save_config(loaded.document, loaded.baseline)
+
+        self.assertIsNotNone(updated)
+        self.assertEqual(
+            fake.call_methods(),
+            ["isScriptLoaded", "loadScript", "org.kde.kwin.Script.run"],
+            "unloadScript must not be called when the script was not loaded",
+        )
+
+    def test_unload_command_failure_raises_reload_error(self):
+        fake = FakeKWin(self.v2_text)
+        loaded = self.load(fake)
+        fake.unload_stdout = "false"
 
         with patch.object(self.module.subprocess, "run", side_effect=fake.run):
             with self.assertRaises(self.module.ReloadFailedError) as ctx:
@@ -234,8 +316,48 @@ class SaveFailureClassificationTests(unittest.TestCase):
         self.assertNotIsInstance(ctx.exception, self.module.ConfigWriteError)
         # The write itself must not be undone or repeated.
         self.assertEqual(len(fake.written_payloads), 1)
+        # loadScript/run must not run after a genuine unload failure.
+        self.assertEqual(fake.call_methods(), ["isScriptLoaded", "unloadScript"])
         # The exception must carry the already-updated baseline so the
         # caller does not spuriously detect staleness on the next save.
+        self.assertTrue(ctx.exception.baseline.key_exists)
+
+    def test_load_command_failure_raises_reload_error(self):
+        fake = FakeKWin(self.v2_text)
+        loaded = self.load(fake)
+        fake.load_returncode = 1
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            with self.assertRaises(self.module.ReloadFailedError):
+                self.module.save_config(loaded.document, loaded.baseline)
+
+        self.assertEqual(
+            fake.call_methods(), ["isScriptLoaded", "unloadScript", "loadScript"],
+        )
+
+    def test_invalid_script_id_raises_reload_error(self):
+        fake = FakeKWin(self.v2_text)
+        loaded = self.load(fake)
+        fake.load_stdout = "not-a-number"
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            with self.assertRaises(self.module.ReloadFailedError):
+                self.module.save_config(loaded.document, loaded.baseline)
+
+        # run() must never be attempted with an unparseable script ID.
+        self.assertEqual(
+            fake.call_methods(), ["isScriptLoaded", "unloadScript", "loadScript"],
+        )
+
+    def test_run_command_failure_raises_reload_error(self):
+        fake = FakeKWin(self.v2_text)
+        loaded = self.load(fake)
+        fake.run_returncode = 1
+
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+            with self.assertRaises(self.module.ReloadFailedError) as ctx:
+                self.module.save_config(loaded.document, loaded.baseline)
+
         self.assertTrue(ctx.exception.baseline.key_exists)
 
     def test_missing_qdbus6_raises_reload_error(self):

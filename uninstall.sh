@@ -72,6 +72,42 @@ if command -v kwriteconfig6 >/dev/null 2>&1; then
         --key MonitorConfigs --delete 2>/dev/null || true
 fi
 
+# Unload the running script from KWin's memory before removing its files, so
+# the process backing it stops immediately rather than lingering until next
+# login. A plain "qdbus6 org.kde.KWin /KWin reconfigure" was proven live
+# (Plasma/KWin 6.7.3 Wayland) not to unload a script's code, unlike
+# unloadScript. This is best-effort: an actual D-Bus error is reported but
+# never blocks the file cleanup below, and a script that was already
+# unloaded (or never loaded) is not treated as an error.
+say "Unloading the KWin script"
+UNLOAD_QDBUS=""
+if command -v qdbus6 >/dev/null 2>&1; then
+    UNLOAD_QDBUS=qdbus6
+elif command -v qdbus-qt6 >/dev/null 2>&1; then
+    UNLOAD_QDBUS=qdbus-qt6
+elif command -v qdbus >/dev/null 2>&1; then
+    UNLOAD_QDBUS=qdbus
+fi
+
+if [ -n "${UNLOAD_QDBUS}" ]; then
+    if UNLOAD_OUTPUT="$("${UNLOAD_QDBUS}" org.kde.KWin /Scripting unloadScript "${SCRIPT_ID}" 2>&1)"; then
+        UNLOAD_STATUS=0
+    else
+        UNLOAD_STATUS=$?
+    fi
+
+    if [ "${UNLOAD_STATUS}" -ne 0 ]; then
+        warn "Could not unload the running KWin script (D-Bus error): ${UNLOAD_OUTPUT}"
+        dim "Continuing with file removal anyway."
+    elif [ "${UNLOAD_OUTPUT}" = "true" ]; then
+        ok "KWin script unloaded"
+    else
+        dim "KWin script was not currently loaded"
+    fi
+else
+    dim "qdbus6 not found; skipping KWin script unload (D-Bus unavailable)"
+fi
+
 say "Removing files"
 if [ -d "${KWIN_DIR}" ]; then
     rm -rf "${KWIN_DIR}"
@@ -108,15 +144,6 @@ for mo in "${HOME}/.local/share/locale/"*/LC_MESSAGES/hotcorners-config.mo; do
     [ -f "$mo" ] || continue
     rm -f "$mo" && ok "Removed ${mo}"
 done
-
-# Reload KWin so the script is actually unloaded
-if command -v qdbus6 >/dev/null 2>&1; then
-    qdbus6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
-elif command -v qdbus-qt6 >/dev/null 2>&1; then
-    qdbus-qt6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
-elif command -v qdbus >/dev/null 2>&1; then
-    qdbus org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
-fi
 
 echo
 if [ -f "${BACKUP_FILE}" ]; then

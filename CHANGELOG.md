@@ -64,12 +64,22 @@ created.
   instead of one generic "check that kwriteconfig6 is available" message
   that misdescribed every cause as the others. A concurrent external edit
   reproduced live is no longer reported as a possibly missing tool.
-- A failed or missing post-write `qdbus6 org.kde.KWin /KWin reconfigure`
-  call is no longer silently ignored: the GUI previously always reported
+- **Reliable KWin script reload**: proven live on Plasma/KWin 6.7.3 Wayland
+  that `qdbus6 org.kde.KWin /KWin reconfigure` reloads neither this script's
+  code nor `MonitorConfigs` — `main.js` only calls `loadConfig()` once, at
+  bootstrap, with no reconfigure signal wired to re-run it. The GUI's Apply
+  path, `setup.sh`, and `uninstall.sh` now use the sequence proven live to
+  reliably reload both: `org.kde.kwin.Scripting.unloadScript` → `loadScript`
+  → `Script.run()`, repeated three times live with no duplicated script
+  objects and no `kwin_wayland` restart. A failed or missing reload step is
+  no longer silently ignored: the GUI previously always reported
   "Configuration saved. KWin has been reloaded — your changes are active
-  now," even when that reload step never ran. It is now reported as its own
-  "reload uncertain" outcome, distinct from a failed save, since the write
-  itself did succeed.
+  now," even when that reload step never ran. It now reports a distinct
+  "Reload uncertain" outcome, and adopts the write's new baseline regardless
+  so the next save is compared against what is actually on disk.
+  `uninstall.sh` now unloads the running script before removing its files
+  (best-effort — a D-Bus error is reported but never blocks cleanup),
+  instead of relying on the same unproven `reconfigure` call.
 - `setup.sh` no longer passes the live KWin script install directory as
   `kpackagetool6`'s upgrade source — doing so caused `--upgrade` to delete
   its own source before copying, silently leaving no KWin script installed
@@ -115,17 +125,14 @@ created.
   cooldown + tap/linger + context) feature set on this host. See
   `tasks/todo.md` and the release-candidate gate plan for the exact
   outstanding checklist.
-
-### Known open issue — blocks the release-candidate gate
-
-- It is not yet established whether `qdbus6 org.kde.KWin /KWin reconfigure`
-  (called by the GUI after every save) reloads this project's KWin script's
-  *code* — `kwin-script/contents/code/main.js` only reads `MonitorConfigs`
-  once, at script bootstrap, and is wired to no reconfigure signal — or only
-  reloads generic workspace settings. A dedicated live spike (the same
-  rigor as `specs/spikes/QTIMER_SPIKE.md`) is required before this can be
-  trusted; see `tasks/todo.md`. Until resolved, "changes are active now"
-  after Apply should be treated as unverified, not guaranteed.
+- The `unloadScript`/`loadScript`/`Script.run()` reload mechanism was proven
+  live on Plasma/KWin 6.7.3 Wayland on this project's AMD development host:
+  a plain `reconfigure` reloaded neither script code nor `MonitorConfigs`;
+  the proven sequence reloaded both, repeated three times with no
+  duplicated `/Scripting` script objects and no `kwin_wayland` restart. The
+  updated `setup.sh`/`uninstall.sh`/GUI code paths built on that evidence
+  still need their own live install/Apply/uninstall retest — see
+  `tasks/todo.md` for the exact checklist.
 
 ### Deferred to future work (not in v0.2.0)
 

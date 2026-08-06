@@ -85,19 +85,22 @@ class LegacyConfigPersistenceTests(unittest.TestCase):
             {"capture_output": True, "text": True, "check": False},
         )
 
-    def test_save_config_normalizes_legacy_shape_and_reconfigures_kwin(self):
+    def test_save_config_normalizes_legacy_shape_and_reloads_kwin_script(self):
         raw = FIXTURE_PATH.read_text(encoding="utf-8")
         read_result = CompletedProcess(
             args=["kreadconfig6"], returncode=0,
             stdout=raw, stderr="",
         )
-        command_result = CompletedProcess(
-            args=[], returncode=0, stdout="", stderr="",
-        )
+        write_result = CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        is_loaded_result = CompletedProcess(args=[], returncode=0, stdout="true", stderr="")
+        unload_result = CompletedProcess(args=[], returncode=0, stdout="true", stderr="")
+        load_result = CompletedProcess(args=[], returncode=0, stdout="3", stderr="")
+        run_result = CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+
         with patch.object(
             self.module.subprocess, "run",
-            side_effect=[read_result, read_result,
-                         command_result, command_result],
+            side_effect=[read_result, read_result, write_result,
+                         is_loaded_result, unload_result, load_result, run_result],
         ) as run:
             loaded = self.module.load_config()
             updated_baseline = self.module.save_config(
@@ -105,7 +108,7 @@ class LegacyConfigPersistenceTests(unittest.TestCase):
             )
 
         self.assertIsNotNone(updated_baseline)
-        self.assertEqual(run.call_count, 4)
+        self.assertEqual(run.call_count, 7)
         self.assertEqual(
             run.call_args_list[2].args[0],
             [
@@ -120,11 +123,25 @@ class LegacyConfigPersistenceTests(unittest.TestCase):
             ],
         )
         self.assertTrue(run.call_args_list[2].kwargs["check"])
+
+        plugin_id = self.module.KWIN_SCRIPT_PLUGIN_ID
+        installed_path = self.module.KWIN_SCRIPT_INSTALLED_PATH
         self.assertEqual(
             run.call_args_list[3].args[0],
-            ["qdbus6", "org.kde.KWin", "/KWin", "reconfigure"],
+            ["qdbus6", "org.kde.KWin", "/Scripting", "isScriptLoaded", plugin_id],
         )
-        self.assertFalse(run.call_args_list[3].kwargs["check"])
+        self.assertEqual(
+            run.call_args_list[4].args[0],
+            ["qdbus6", "org.kde.KWin", "/Scripting", "unloadScript", plugin_id],
+        )
+        self.assertEqual(
+            run.call_args_list[5].args[0],
+            ["qdbus6", "org.kde.KWin", "/Scripting", "loadScript", installed_path, plugin_id],
+        )
+        run_command = run.call_args_list[6].args[0]
+        self.assertEqual(run_command[:2], ["qdbus6", "org.kde.KWin"])
+        self.assertTrue(run_command[2].startswith("/Scripting/Script"))
+        self.assertEqual(run_command[3], "org.kde.kwin.Script.run")
 
 
 if __name__ == "__main__":

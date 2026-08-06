@@ -17,13 +17,17 @@ Current data flow:
 
 1. The PyQt6 GUI detects outputs through `QGuiApplication.screens()`.
 2. It reads and writes one JSON value, `MonitorConfigs`, in `[Script-hotcorners-per-monitor]` in `kwinrc`.
-3. A KWin reconfigure (`qdbus6 org.kde.KWin /KWin reconfigure`) is triggered
-   after every Apply. **Unverified:** `main.js` reads `MonitorConfigs` only
-   once, at script bootstrap, with no reconfigure signal wired to reload it;
-   whether the generic reconfigure call actually reloads this script's code
-   (as opposed to only generic workspace settings) has no live evidence
-   equivalent to `specs/spikes/QTIMER_SPIKE.md` and needs a dedicated spike.
-   See `tasks/todo.md`.
+3. After every Apply, the GUI reloads the KWin script itself via
+   `org.kde.kwin.Scripting`: `unloadScript` -> `loadScript` -> `Script.run()`
+   on the returned script ID, using plugin id `hotcorners-per-monitor` and
+   the installed `main.js` path. Proved live on Plasma/KWin 6.7.3 Wayland
+   (repeated three times, no duplicated `/Scripting` objects, no
+   `kwin_wayland` restart) that a plain `qdbus6 org.kde.KWin /KWin
+   reconfigure` reloads neither this script's code nor `MonitorConfigs` --
+   `main.js` only calls `loadConfig()` once, at bootstrap, with no
+   reconfigure signal wired to re-run it -- so this sequence replaced it.
+   `setup.sh` and `uninstall.sh` use the same interface. See `tasks/todo.md`
+   for the still-open live retest of this implementation.
 4. The backend registers all eight global electric borders, identifies the output under the pointer, looks up the output/position action and invokes a KDE global shortcut over D-Bus.
 
 Planned data flow:

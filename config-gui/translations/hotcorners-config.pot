@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: hotcorners-config\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-05 20:24+0200\n"
+"POT-Creation-Date: 2026-08-06 02:17+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,506 +17,506 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: config-gui/hotcorners_config.py:159
+#: config-gui/hotcorners_config.py:172
 msgid ""
 "The configuration was changed by another program since this window opened "
 "it. Your edits were not saved, and nothing was overwritten. Choose \"Reload "
 "from disk\" to load the current configuration, then redo your changes."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:167
+#: config-gui/hotcorners_config.py:180
 #, python-brace-format
 msgid ""
 "The required KDE tool \"{tool}\" was not found. It is normally part of "
 "Plasma 6. Nothing was changed. Install it, then try again."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:173 config-gui/hotcorners_config.py:180
-#: config-gui/hotcorners_config.py:187
+#: config-gui/hotcorners_config.py:186 config-gui/hotcorners_config.py:193
+#: config-gui/hotcorners_config.py:200
 msgid "no further detail was reported"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:175
+#: config-gui/hotcorners_config.py:188
 #, python-brace-format
 msgid ""
 "Writing the configuration to kwinrc failed, so nothing was changed. Details: "
 "{detail}"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:182
+#: config-gui/hotcorners_config.py:195
 #, python-brace-format
 msgid ""
 "The configuration could not be prepared for saving, so nothing was changed. "
 "Details: {detail}"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:189
+#: config-gui/hotcorners_config.py:202
 #, python-brace-format
 msgid ""
-"Configuration saved, but KWin could not be reloaded automatically, so it is "
-"not certain your changes are active yet. Details: {detail}. Try Apply again, "
-"or log out and back in."
+"Configuration saved, but the Hot Corners script could not be reloaded "
+"automatically, so it is not certain your changes are active yet. Details: "
+"{detail}. Try Apply again, or log out and back in."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:195
+#: config-gui/hotcorners_config.py:208
 msgid "Saving the configuration failed. Nothing was changed."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:303
+#: config-gui/hotcorners_config.py:359
 msgid "Overview (show all windows)"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:304
+#: config-gui/hotcorners_config.py:360
 msgid "Grid View (virtual desktops)"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:305
+#: config-gui/hotcorners_config.py:361
 msgid "Show Desktop"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:306
+#: config-gui/hotcorners_config.py:362
 msgid "Cycle Overview / Grid"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:307
+#: config-gui/hotcorners_config.py:363
 msgid "Maximize active window"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:308
+#: config-gui/hotcorners_config.py:364
 msgid "Minimize active window"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:309
+#: config-gui/hotcorners_config.py:365
 msgid "Close active window"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:310
+#: config-gui/hotcorners_config.py:366
 msgid "Edit tile layout"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:311
+#: config-gui/hotcorners_config.py:367
 msgid "Application launcher"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:312
+#: config-gui/hotcorners_config.py:368
 msgid "Show plasma menu at cursor"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:313
+#: config-gui/hotcorners_config.py:369
 msgid "Lock screen"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:314
+#: config-gui/hotcorners_config.py:370
 msgid "Log out…"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:332
+#: config-gui/hotcorners_config.py:388
 msgid "Top-left"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:332
+#: config-gui/hotcorners_config.py:388
 msgid "Top"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:332
+#: config-gui/hotcorners_config.py:388
 msgid "Top-right"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:332
+#: config-gui/hotcorners_config.py:388
 msgid "Left"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:332
+#: config-gui/hotcorners_config.py:388
 msgid "Right"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:333
+#: config-gui/hotcorners_config.py:389
 msgid "Bottom-left"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:333
+#: config-gui/hotcorners_config.py:389
 msgid "Bottom"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:333
+#: config-gui/hotcorners_config.py:389
 msgid "Bottom-right"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:334 config-gui/hotcorners_config.py:1061
-#: config-gui/hotcorners_config.py:1838
+#: config-gui/hotcorners_config.py:390 config-gui/hotcorners_config.py:1117
+#: config-gui/hotcorners_config.py:1894
 msgid "Command"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:334 config-gui/hotcorners_config.py:1105
+#: config-gui/hotcorners_config.py:390 config-gui/hotcorners_config.py:1161
 msgid "Program"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:334 config-gui/hotcorners_config.py:1115
+#: config-gui/hotcorners_config.py:390 config-gui/hotcorners_config.py:1171
 msgid "Arguments"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:335 config-gui/hotcorners_config.py:1123
+#: config-gui/hotcorners_config.py:391 config-gui/hotcorners_config.py:1179
 msgid "Add"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:335 config-gui/hotcorners_config.py:1124
+#: config-gui/hotcorners_config.py:391 config-gui/hotcorners_config.py:1180
 msgid "Edit"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:335 config-gui/hotcorners_config.py:1125
+#: config-gui/hotcorners_config.py:391 config-gui/hotcorners_config.py:1181
 msgid "Remove"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:335 config-gui/hotcorners_config.py:1126
+#: config-gui/hotcorners_config.py:391 config-gui/hotcorners_config.py:1182
 msgid "Move Up"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:335 config-gui/hotcorners_config.py:1127
+#: config-gui/hotcorners_config.py:391 config-gui/hotcorners_config.py:1183
 msgid "Move Down"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:336 config-gui/hotcorners_config.py:1304
-#: config-gui/hotcorners_config.py:1315
+#: config-gui/hotcorners_config.py:392 config-gui/hotcorners_config.py:1360
+#: config-gui/hotcorners_config.py:1371
 msgid "Argument"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:337 config-gui/hotcorners_config.py:1304
-#: config-gui/hotcorners_config.py:1316
+#: config-gui/hotcorners_config.py:393 config-gui/hotcorners_config.py:1360
+#: config-gui/hotcorners_config.py:1372
 msgid "Enter argument value:"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:338 config-gui/hotcorners_config.py:1362
+#: config-gui/hotcorners_config.py:394 config-gui/hotcorners_config.py:1418
 msgid "Command action runs the program with argv items exactly as listed."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:339 config-gui/hotcorners_config.py:2344
+#: config-gui/hotcorners_config.py:395 config-gui/hotcorners_config.py:2400
 msgid "Command program cannot be empty."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:340
+#: config-gui/hotcorners_config.py:396
 msgid "Command program is invalid."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:341 config-gui/hotcorners_config.py:2348
+#: config-gui/hotcorners_config.py:397 config-gui/hotcorners_config.py:2404
 msgid "Command arguments are invalid."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:342 config-gui/hotcorners_config.py:1582
+#: config-gui/hotcorners_config.py:398 config-gui/hotcorners_config.py:1638
 msgid "Cooldown"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:343 config-gui/hotcorners_config.py:2310
-#: config-gui/hotcorners_config.py:2334
+#: config-gui/hotcorners_config.py:399 config-gui/hotcorners_config.py:2366
+#: config-gui/hotcorners_config.py:2390
 msgid "Invalid cooldown value."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:344 config-gui/hotcorners_config.py:1536
+#: config-gui/hotcorners_config.py:400 config-gui/hotcorners_config.py:1592
 msgid "Tap"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:345 config-gui/hotcorners_config.py:1543
+#: config-gui/hotcorners_config.py:401 config-gui/hotcorners_config.py:1599
 msgid "Linger"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:346 config-gui/hotcorners_config.py:1550
+#: config-gui/hotcorners_config.py:402 config-gui/hotcorners_config.py:1606
 msgid "Linger delay"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:347 config-gui/hotcorners_config.py:2320
+#: config-gui/hotcorners_config.py:403 config-gui/hotcorners_config.py:2376
 msgid "Invalid linger delay value."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:348 config-gui/hotcorners_config.py:695
-#: config-gui/hotcorners_config.py:715
+#: config-gui/hotcorners_config.py:404 config-gui/hotcorners_config.py:751
+#: config-gui/hotcorners_config.py:771
 msgid "Context"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:349 config-gui/hotcorners_config.py:371
-#: config-gui/hotcorners_config.py:384
+#: config-gui/hotcorners_config.py:405 config-gui/hotcorners_config.py:427
+#: config-gui/hotcorners_config.py:440
 msgid "Default"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:350 config-gui/hotcorners_config.py:372
-#: config-gui/hotcorners_config.py:707 config-gui/hotcorners_config.py:722
+#: config-gui/hotcorners_config.py:406 config-gui/hotcorners_config.py:428
+#: config-gui/hotcorners_config.py:763 config-gui/hotcorners_config.py:778
 msgid "Activity"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:351 config-gui/hotcorners_config.py:373
-#: config-gui/hotcorners_config.py:708 config-gui/hotcorners_config.py:730
+#: config-gui/hotcorners_config.py:407 config-gui/hotcorners_config.py:429
+#: config-gui/hotcorners_config.py:764 config-gui/hotcorners_config.py:786
 msgid "Desktop"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:352 config-gui/hotcorners_config.py:374
-#: config-gui/hotcorners_config.py:709
+#: config-gui/hotcorners_config.py:408 config-gui/hotcorners_config.py:430
+#: config-gui/hotcorners_config.py:765
 msgid "Activity + Desktop"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:353 config-gui/hotcorners_config.py:1482
+#: config-gui/hotcorners_config.py:409 config-gui/hotcorners_config.py:1538
 msgid "Add Context"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:354 config-gui/hotcorners_config.py:1483
+#: config-gui/hotcorners_config.py:410 config-gui/hotcorners_config.py:1539
 msgid "Edit Context"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:355 config-gui/hotcorners_config.py:1484
-#: config-gui/hotcorners_config.py:2043
+#: config-gui/hotcorners_config.py:411 config-gui/hotcorners_config.py:1540
+#: config-gui/hotcorners_config.py:2099
 msgid "Remove Context"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:356 config-gui/hotcorners_config.py:1835
+#: config-gui/hotcorners_config.py:412 config-gui/hotcorners_config.py:1891
 msgid "Inherit from Default"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:357 config-gui/hotcorners_config.py:1989
-#: config-gui/hotcorners_config.py:2029
+#: config-gui/hotcorners_config.py:413 config-gui/hotcorners_config.py:2045
+#: config-gui/hotcorners_config.py:2085
 msgid "A context with this identifier already exists."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:358 config-gui/hotcorners_config.py:2039
+#: config-gui/hotcorners_config.py:414 config-gui/hotcorners_config.py:2095
 msgid "The default context cannot be removed."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:359 config-gui/hotcorners_config.py:2044
+#: config-gui/hotcorners_config.py:415 config-gui/hotcorners_config.py:2100
 msgid "Remove this context?"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:360 config-gui/hotcorners_config.py:1984
-#: config-gui/hotcorners_config.py:2024 config-gui/hotcorners_config.py:2285
-#: config-gui/hotcorners_config.py:2294 config-gui/hotcorners_config.py:2296
-#: config-gui/hotcorners_config.py:2299 config-gui/hotcorners_config.py:2313
-#: config-gui/hotcorners_config.py:2316
+#: config-gui/hotcorners_config.py:416 config-gui/hotcorners_config.py:2040
+#: config-gui/hotcorners_config.py:2080 config-gui/hotcorners_config.py:2341
+#: config-gui/hotcorners_config.py:2350 config-gui/hotcorners_config.py:2352
+#: config-gui/hotcorners_config.py:2355 config-gui/hotcorners_config.py:2369
+#: config-gui/hotcorners_config.py:2372
 msgid "Invalid context identifier."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:387
+#: config-gui/hotcorners_config.py:443
 #, python-brace-format
 msgid "Activity: {activity_id}"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:390
+#: config-gui/hotcorners_config.py:446
 #, python-brace-format
 msgid "Desktop: {desktop_id}"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:395
+#: config-gui/hotcorners_config.py:451
 #, python-brace-format
 msgid "Activity + Desktop: {activity_id} / {desktop_id}"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:711
+#: config-gui/hotcorners_config.py:767
 msgid ""
 "Choose what this context depends on. The binding you edit here applies only "
 "while that activity and/or virtual desktop is current."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:719
+#: config-gui/hotcorners_config.py:775
 msgid ""
 "The activity this context applies to. The name is shown; the stable "
 "identifier KWin matches on is stored."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:727
+#: config-gui/hotcorners_config.py:783
 msgid ""
 "The virtual desktop this context applies to. The name is shown; the stable "
 "identifier KWin matches on is stored."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:733
+#: config-gui/hotcorners_config.py:789
 msgid "Refresh list"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:735
+#: config-gui/hotcorners_config.py:791
 msgid ""
 "Look up the current activities and virtual desktops again, for example after "
 "creating or renaming one."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:761
+#: config-gui/hotcorners_config.py:817
 #, python-brace-format
 msgid "{identifier} — unavailable"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1035
+#: config-gui/hotcorners_config.py:1091
 msgid ""
 "Runs the action after the cursor has stayed in this hot zone for the linger "
 "delay."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1040
+#: config-gui/hotcorners_config.py:1096
 msgid ""
 "Runs the action as soon as the cursor reaches this hot zone, or on a short "
 "touch when a linger action is also set."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1046
+#: config-gui/hotcorners_config.py:1102
 msgid ""
 "No action: nothing happens.\n"
 "Trigger shortcut: invokes a KDE global shortcut.\n"
 "Command: runs a program directly, without a shell."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1059 config-gui/hotcorners_config.py:1836
+#: config-gui/hotcorners_config.py:1115 config-gui/hotcorners_config.py:1892
 msgid "No action"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1060 config-gui/hotcorners_config.py:1837
+#: config-gui/hotcorners_config.py:1116 config-gui/hotcorners_config.py:1893
 msgid "Trigger shortcut"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1064
+#: config-gui/hotcorners_config.py:1120
 msgid "Action:"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1069
+#: config-gui/hotcorners_config.py:1125
 msgid "Custom shortcut…"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1071
+#: config-gui/hotcorners_config.py:1127
 msgid ""
 "The KDE global shortcut to invoke. Choose \"Custom shortcut…\" to enter one "
 "that is not in this list."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1075
+#: config-gui/hotcorners_config.py:1131
 msgid "Shortcut:"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1079
+#: config-gui/hotcorners_config.py:1135
 msgid "e.g. kwin"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1081
+#: config-gui/hotcorners_config.py:1137
 msgid ""
 "The kglobalaccel component that owns the shortcut, such as kwin for window "
 "management or ksmserver for session actions."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1085
+#: config-gui/hotcorners_config.py:1141
 msgid "Component:"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1089
+#: config-gui/hotcorners_config.py:1145
 msgid "e.g. Overview"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1091
+#: config-gui/hotcorners_config.py:1147
 msgid ""
 "The exact shortcut name within that component. It must match how KDE "
 "registered it, including spelling and spaces."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1095
+#: config-gui/hotcorners_config.py:1151
 msgid "Shortcut name:"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1100
+#: config-gui/hotcorners_config.py:1156
 msgid ""
 "The program to run. Give a full path, or a bare name to be found on PATH. It "
 "is executed directly, without a shell, so pipes, redirections and variables "
 "are not interpreted."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1111
+#: config-gui/hotcorners_config.py:1167
 msgid ""
 "Arguments passed to the program, one entry per argument, in this order. "
 "Because no shell is involved, each entry is passed through literally: do not "
 "quote them, and spaces do not split an entry."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1129
+#: config-gui/hotcorners_config.py:1185
 msgid "Add one argument to the end of the list."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1130
+#: config-gui/hotcorners_config.py:1186
 msgid "Change the selected argument."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1131
+#: config-gui/hotcorners_config.py:1187
 msgid "Delete the selected argument."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1132
+#: config-gui/hotcorners_config.py:1188
 msgid "Move the selected argument one place earlier."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1133
+#: config-gui/hotcorners_config.py:1189
 msgid "Move the selected argument one place later."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1351
+#: config-gui/hotcorners_config.py:1407
 msgid "Pushing the cursor against this corner/edge does nothing."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1355
+#: config-gui/hotcorners_config.py:1411
 msgid ""
 "Find shortcut names with: <code>qdbus6 org.kde.kglobalaccel /component/"
 "&lt;component&gt; org.kde.kglobalaccel.Component.shortcutNames</code>"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1366
+#: config-gui/hotcorners_config.py:1422
 msgid ""
 "The selected shortcut will be invoked when the cursor is pushed against this "
 "corner/edge."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1402
+#: config-gui/hotcorners_config.py:1458
 msgid "Hot Corners Per Monitor"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1433
+#: config-gui/hotcorners_config.py:1489
 msgid ""
 "<b>Tip:</b> Disable the standard KDE hot corners in System Settings → Screen "
 "Edges before relying on this script, otherwise both will fire."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1451
+#: config-gui/hotcorners_config.py:1507
 msgid "Monitor arrangement — click a corner or edge to configure"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1458
+#: config-gui/hotcorners_config.py:1514
 msgid ""
 "Your monitors, arranged as they are on your desk. Click one of the eight "
 "handles on a monitor — four corners and four edge midpoints — to choose "
 "which hot zone to configure. Filled handles already have an action."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1467
+#: config-gui/hotcorners_config.py:1523
 msgid "Select a corner above"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1475
+#: config-gui/hotcorners_config.py:1531
 msgid ""
 "Which situation you are editing bindings for. \"Default\" applies whenever "
 "no more specific context matches; the others apply only in their own "
 "activity and/or virtual desktop."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1486
+#: config-gui/hotcorners_config.py:1542
 msgid ""
 "Create a context for a specific activity, virtual desktop, or both, so this "
 "monitor's hot zones can behave differently there."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1490
+#: config-gui/hotcorners_config.py:1546
 msgid ""
 "Change which activity or virtual desktop the selected context applies to. "
 "The Default context cannot be changed."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1494
+#: config-gui/hotcorners_config.py:1550
 msgid ""
 "Delete the selected context and all bindings in it. Those hot zones then "
 "fall back to the Default context."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1506
+#: config-gui/hotcorners_config.py:1562
 msgid ""
 "When a hot zone triggers, the most specific matching context wins: activity "
 "+ desktop, then activity, then desktop, then Default."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1517
+#: config-gui/hotcorners_config.py:1573
 msgid ""
 "Whether this hot zone has its own binding in this context.\n"
 "\n"
@@ -528,68 +528,68 @@ msgid ""
 "the action \"No action\" — that blocks the fallback instead of inheriting."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1557
+#: config-gui/hotcorners_config.py:1613
 #, python-brace-format
 msgid ""
 "How long the cursor must stay in the hot zone before the linger action runs "
 "instead of the tap action. {minimum}–{maximum} ms; {default} ms by default."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1589
+#: config-gui/hotcorners_config.py:1645
 #, python-brace-format
 msgid ""
 "Minimum time before this hot zone can trigger again, to stop one sweep of "
 "the cursor from firing repeatedly. 0–{maximum} ms; 0 disables the cooldown."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1623
+#: config-gui/hotcorners_config.py:1679
 msgid "Enable tap/linger and contexts…"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1627
+#: config-gui/hotcorners_config.py:1683
 msgid ""
 "Upgrade this configuration so each hot zone can have a separate tap and "
 "linger action, and so bindings can differ per activity and virtual desktop. "
 "Your existing actions and cooldowns are kept exactly as they are."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1634
+#: config-gui/hotcorners_config.py:1690
 msgid "Help"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1637
+#: config-gui/hotcorners_config.py:1693
 msgid "Explain hot zones, actions, cooldown, tap and linger, and contexts."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1640
+#: config-gui/hotcorners_config.py:1696
 msgid "Reload from disk"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1643
+#: config-gui/hotcorners_config.py:1699
 msgid ""
 "Discard unsaved changes and read the configuration from kwinrc again. Use "
 "this if another program changed the configuration while this window was open."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1648
+#: config-gui/hotcorners_config.py:1704
 msgid "Close"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1650
+#: config-gui/hotcorners_config.py:1706
 msgid "Close this window. Unsaved changes are discarded."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1652
+#: config-gui/hotcorners_config.py:1708
 msgid "Apply"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1655
+#: config-gui/hotcorners_config.py:1711
 msgid ""
 "Save the configuration to kwinrc and reload the KWin script so the changes "
 "take effect. Nothing is written until you do this."
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1669
+#: config-gui/hotcorners_config.py:1725
 msgid ""
 "<h3>Hot zones</h3><p>Every monitor has eight hot zones: its four corners and "
 "the midpoint of its four edges. Each one is configured separately, so the "
@@ -625,15 +625,15 @@ msgid ""
 "Reload from disk and redo your change.</p>"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1722
+#: config-gui/hotcorners_config.py:1778
 msgid "Hot Corners Per Monitor — Help"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1734
+#: config-gui/hotcorners_config.py:1790
 msgid "Enable tap/linger and contexts?"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1736
+#: config-gui/hotcorners_config.py:1792
 msgid ""
 "This upgrades your configuration so that each hot zone can have a separate "
 "tap action and linger action, and so that bindings can differ per activity "
@@ -650,38 +650,39 @@ msgid ""
 "Continue?"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1758
+#: config-gui/hotcorners_config.py:1814
 msgid "Upgrade failed"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1760
+#: config-gui/hotcorners_config.py:1816
 #, python-brace-format
 msgid ""
 "The configuration could not be upgraded, so nothing was changed. Details: "
 "{detail}"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:1984 config-gui/hotcorners_config.py:1989
-#: config-gui/hotcorners_config.py:2024 config-gui/hotcorners_config.py:2029
-#: config-gui/hotcorners_config.py:2039 config-gui/hotcorners_config.py:2356
-#: config-gui/hotcorners_config.py:2372
+#: config-gui/hotcorners_config.py:2040 config-gui/hotcorners_config.py:2045
+#: config-gui/hotcorners_config.py:2080 config-gui/hotcorners_config.py:2085
+#: config-gui/hotcorners_config.py:2095 config-gui/hotcorners_config.py:2412
+#: config-gui/hotcorners_config.py:2428
 msgid "Save failed"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:2149 config-gui/hotcorners_config.py:2157
+#: config-gui/hotcorners_config.py:2205 config-gui/hotcorners_config.py:2213
 #, python-brace-format
 msgid "{position} of {monitor}"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:2367
+#: config-gui/hotcorners_config.py:2423
 msgid "Reload uncertain"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:2378
+#: config-gui/hotcorners_config.py:2434
 msgid "Saved"
 msgstr ""
 
-#: config-gui/hotcorners_config.py:2379
+#: config-gui/hotcorners_config.py:2435
 msgid ""
-"Configuration saved. KWin has been reloaded — your changes are active now."
+"Configuration saved. The Hot Corners script was reloaded — your changes are "
+"active now."
 msgstr ""

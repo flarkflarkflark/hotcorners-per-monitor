@@ -58,8 +58,18 @@ class FakeKWinPersistence:
             self.written_payloads.append(command[-1])
             return CompletedProcess(command, 0, stdout="", stderr="")
         if command[0] == "qdbus6":
-            self.reload_count += 1
-            return CompletedProcess(command, 0, stdout="", stderr="")
+            path = command[2] if len(command) > 2 else ""
+            method = command[3] if len(command) > 3 else ""
+            if path == "/Scripting" and method == "isScriptLoaded":
+                return CompletedProcess(command, 0, stdout="true", stderr="")
+            if path == "/Scripting" and method == "unloadScript":
+                return CompletedProcess(command, 0, stdout="true", stderr="")
+            if path == "/Scripting" and method == "loadScript":
+                return CompletedProcess(command, 0, stdout="3", stderr="")
+            if path.startswith("/Scripting/Script") and method == "org.kde.kwin.Script.run":
+                self.reload_count += 1
+                return CompletedProcess(command, 0, stdout="", stderr="")
+            raise AssertionError(f"unexpected qdbus6 command: {command}")
         raise AssertionError(f"unexpected command: {command}")
 
     def external_set(self, raw):

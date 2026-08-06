@@ -170,7 +170,9 @@ No framework, abstraction or dependency is added before a roadmap requirement ne
 - Keep Plasma-owned files untouched.
 - Block Apply when configuration is malformed, unsupported or stale.
 - Install and remove files through component manifests; preserve pre-existing unrelated files.
-- Trigger a KWin reconfigure after every successful GUI or KCM Apply.
+- Reload the Hot Corners KWin script after every successful GUI or KCM
+  Apply, using a mechanism proven live to actually reload it (a plain KWin
+  reconfigure was proven not to; see `tasks/todo.md`).
 
 ### Ask first
 

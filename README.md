@@ -25,7 +25,7 @@ This project gives every corner and edge of every connected monitor its own inde
 - **Per-activity and per-virtual-desktop overrides** — bindings can differ by activity, virtual desktop, or both, falling back to a default when no override applies.
 - **Scales gracefully** from one monitor to many. Tested with up to six displays in mixed arrangements (side-by-side, stacked, ultrawide+laptop).
 - **Multilingual** — English, Dutch (Nederlands), German (Deutsch). More translations welcome.
-- **Pure standards compliance** — config is stored in `kwinrc` and applied via KWin's standard reconfigure mechanism.
+- **Pure standards compliance** — config is stored in `kwinrc` and applied by reloading the KWin script through KWin's supported `org.kde.kwin.Scripting` D-Bus interface.
 
 ## Requirements
 
@@ -51,7 +51,7 @@ That runs an interactive setup that:
 - Compiles & installs translation `.mo` files to `~/.local/share/locale/{nl,de}/LC_MESSAGES/`
 - **Enables the KWin script** in `kwinrc` (no need to flip the switch in System Settings)
 - **Offers to disable the built-in KDE hot corners** that would otherwise double-fire (with a backup saved to `~/.config/hotcorners-per-monitor-backup-electric-borders.conf` for restoration)
-- Reloads KWin so changes take effect immediately
+- Reloads the Hot Corners KWin script so changes take effect immediately
 - Optionally launches the GUI when done
 
 Flags:
@@ -76,10 +76,12 @@ To uninstall everything:
 2. The window shows all your connected monitors at scale, with eight clickable handles per monitor (four corners + four edge midpoints).
 3. Click a handle to select that corner/edge. The editor below shows the current action.
 4. Pick an action from the dropdown — or choose "Custom shortcut" to type a `kglobalaccel` component and shortcut name directly.
-5. Click **Apply**. The GUI saves the configuration and asks KWin to
-   reconfigure. If that reload step fails (for example, `qdbus6` is
-   missing), you'll see a "Reload uncertain" warning instead of a silent
-   false success — Apply again, or log out and back in.
+5. Click **Apply**. The GUI saves the configuration, then reloads the Hot
+   Corners script itself (unload, load, run — a plain KWin reconfigure was
+   proven not to pick up either code or configuration changes). If that
+   reload fails (for example, `qdbus6` is missing), you'll see a "Reload
+   uncertain" warning instead of a silent false success — Apply again, or
+   log out and back in.
 
 Configured handles fill in with the accent colour so you can see your active setup at a glance. The handles at the inner edges (where two monitors touch) are easy to spot and easy to leave unconfigured — solving the original multi-monitor frustration.
 

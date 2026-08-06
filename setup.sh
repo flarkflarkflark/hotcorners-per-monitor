@@ -438,14 +438,48 @@ else
     ok "No conflicting built-in hot corners active"
 fi
 
-# ----- reconfigure kwin -----
+# ----- reload the KWin script -----
+# A plain "qdbus6 org.kde.KWin /KWin reconfigure" was proven live (Plasma/
+# KWin 6.7.3 Wayland) to reload neither the script's code nor MonitorConfigs
+# -- main.js only calls loadConfig() once, at bootstrap. The sequence below
+# was proven live to reliably reload both, repeated three times with no
+# duplicated script objects and no kwin_wayland restart.
 echo
-say "Reloading KWin"
-if "${QDBUS}" org.kde.KWin /KWin reconfigure >/dev/null 2>&1; then
-    ok "KWin reconfigured — script is now live"
+say "Reloading the Hot Corners script"
+
+HCPM_INSTALLED_MAIN_JS="${KWIN_DIR}/contents/code/main.js"
+
+reload_kwin_script() {
+    local was_loaded unloaded script_id
+    was_loaded="$("${QDBUS}" org.kde.KWin /Scripting isScriptLoaded "${SCRIPT_ID}" 2>/dev/null)"
+
+    if [ "${was_loaded}" = "true" ]; then
+        unloaded="$("${QDBUS}" org.kde.KWin /Scripting unloadScript "${SCRIPT_ID}" 2>/dev/null)"
+        if [ "${unloaded}" != "true" ]; then
+            fail "Could not unload the previously running Hot Corners script"
+            return 1
+        fi
+    fi
+
+    script_id="$("${QDBUS}" org.kde.KWin /Scripting loadScript "${HCPM_INSTALLED_MAIN_JS}" "${SCRIPT_ID}" 2>/dev/null)"
+    if ! [[ "${script_id}" =~ ^[0-9]+$ ]]; then
+        fail "Could not load the Hot Corners script (no valid script ID returned)"
+        return 1
+    fi
+
+    if ! "${QDBUS}" org.kde.KWin "/Scripting/Script${script_id}" org.kde.kwin.Script.run >/dev/null 2>&1; then
+        fail "Could not start the reloaded Hot Corners script"
+        return 1
+    fi
+
+    return 0
+}
+
+if reload_kwin_script; then
+    ok "Hot Corners script reloaded — it is now live"
 else
-    warn "Could not reload KWin via D-Bus"
-    dim "You may need to log out and back in for changes to take effect."
+    dim "Fix the issue above and re-run setup.sh, or log out and back in."
+    exit 1
 fi
 
 # ----- done -----
