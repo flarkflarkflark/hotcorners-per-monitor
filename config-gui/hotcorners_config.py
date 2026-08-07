@@ -1020,8 +1020,18 @@ class MonitorCanvas(QWidget):
     def _is_configured(self, monitor_name: str, pos_id: str) -> bool:
         mon = self.config.get("monitors", {}).get(monitor_name, {})
         binding = mon.get(pos_id, {})
-        action = binding.get("action", {})
-        return action.get("type", "none") != "none"
+        if not isinstance(binding, dict):
+            return False
+        if "action" in binding:
+            # v2 shape: a single action.
+            action = binding.get("action", {})
+            return isinstance(action, dict) and action.get("type", "none") != "none"
+        # v3 shape: tap and/or linger. Either one being a real action counts.
+        tap = binding.get("tap", {})
+        linger = binding.get("linger", {})
+        tap_set = isinstance(tap, dict) and tap.get("type", "none") != "none"
+        linger_set = isinstance(linger, dict) and linger.get("type", "none") != "none"
+        return tap_set or linger_set
 
     def paintEvent(self, event):
         painter = QPainter(self)
