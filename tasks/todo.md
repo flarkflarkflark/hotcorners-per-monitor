@@ -119,10 +119,50 @@ Activity/Desktop discovery are explicitly out of v0.2.0 scope — see
       application-menu launcher and the direct shell launch both work, and
       the desktop entry uses the absolute installed launcher path.
 - [ ] Prove timer and per-output desktop APIs on Plasma 6.4/current, Wayland/X11. (QTimer capability is proven on Plasma 6.4 Wayland and X11, see `specs/spikes/QTIMER_SPIKE.md` and `specs/spikes/results/`; the per-output desktop API (`currentDesktopForScreen`) is implemented and unit-tested but has no dedicated Plasma 6.4 spike record.)
-- [ ] Run the physical AMD smoke checklist for the full v0.2.0 feature set (see the release-candidate gate plan) — not yet executed.
-- [ ] Run interrupted-upgrade, uninstall, and X11 gates for the full v0.2.0 feature set (commands, cooldown, tap/linger, contexts) — Wayland-only so far.
-- [ ] Run context/activity rename-removal and hot-unplug gates. (Wired in the runtime — `screensChanged` cleanup, unavailable-context preservation — but no recorded manual gate.)
-- [ ] Pass X11 gate for the full v0.2.0 feature set; do not release while required platform support is pending. (Tap/linger timing alone has an X11 pass at Plasma 6.4; commands and contexts have not had a dedicated X11 gate run.)
+- [x] Run the physical AMD smoke checklist for the full v0.2.0 feature set on
+      Wayland (see the release-candidate gate plan). Completed 2026-08-06 on
+      the primary AMD Plasma/KWin 6.7.3 Wayland host (hybrid live-system
+      methodology: automated where safe, one manual physical action at a
+      time otherwise). Sections A–J all PASS, or PASS with a documented,
+      non-blocking limitation:
+      per-monitor ownership including the shared inner boundary between the
+      two monitors; single-Apply activation; cooldown (suppression,
+      post-cooldown retrigger, 0 ms, default 350 ms feel); tap vs. linger
+      (tap, linger, stay-zone cancel, default threshold/stay-zone feel,
+      cooldown interaction); command actions (exactly-once execution,
+      byte-exact argument preservation, live shell-metacharacter-injection
+      attempt proven inert, correct D-Bus `av` wire format, correct distinct
+      error names for malformed input); all four context-precedence levels
+      (combined, activity-only, desktop-only, default) and explicit-`None`-
+      blocks-fallback physically confirmed across the host's real four
+      virtual desktops, plus discovery names/IDs, stale-ID preservation and
+      Refresh-without-data-loss in the GUI; v2→v3 upgrade (cancel path,
+      accept path, preserved bindings/cooldowns, schemaVersion 3 on disk);
+      save/reload failure-message classification (missing tool, write
+      failure, reload failure, stale-write conflict all reproduced live with
+      isolated fakebin `PATH` injection, never touching the real system
+      tools); repeated-reload stability (3 cycles, script's own `/Scripting`
+      object ID held constant, no duplicate triggers, `kwin_wayland` PID
+      unchanged for the entire session); and the icon/launcher. Ambiguous-
+      ownership fail-closed and malformed-context-entry fail-closed were not
+      physically reproduced (no overlapping-output hardware available) and
+      rely on the automated suite. One structural (non-code) finding: newly
+      added `hicolor` icons don't appear in Kickoff/taskbar until the next
+      `plasmashell` restart — confirmed correct via `kmenuedit` and file
+      checksum instead; not a defect, out of scope to force-fix without
+      restarting Plasma.
+- [ ] Run interrupted-upgrade and uninstall gates for the full v0.2.0
+      feature set (commands, cooldown, tap/linger, contexts) on Wayland —
+      not yet executed. The 2026-08-06 smoke test covered a normal
+      (non-interrupted) v2→v3 upgrade and did not run `uninstall.sh` against
+      the live install.
+- [ ] Run context/activity rename-removal and hot-unplug gates. (Wired in
+      the runtime — `screensChanged` cleanup, unavailable-context
+      preservation — and the "stale identifier stays visible, not silently
+      dropped" behavior was spot-checked live on 2026-08-06 with a synthetic
+      unresolvable desktop ID; an actual rename/removal of a real desktop or
+      activity, and a physical monitor hot-unplug, remain untested.)
+- [ ] Pass X11 gate for the full v0.2.0 feature set; do not release while required platform support is pending. (Tap/linger timing alone has an X11 pass at Plasma 6.4; commands, cooldown and contexts have not had a dedicated X11 gate run. The 2026-08-06 smoke test was Wayland-only.)
 - [ ] Prepare and create the `v0.2.0` tag, and publish the release, once the gates above pass.
 
 ## Future work (post-v0.2.0)

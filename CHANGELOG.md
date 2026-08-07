@@ -3,14 +3,18 @@
 ## v0.2.0 (release candidate — not yet tagged or released)
 
 **Status: draft.** This entry describes the feature set on `main` as of the
-`release/v0-next-readiness` branch. A physical retest on the primary AMD
-Plasma/KWin 6.7.3 Wayland host confirmed the reload mechanism, single-Apply
-activation, `setup.sh` install/reload, the application-menu launcher fix, and
-existing shortcut bindings. The full v0.2.0 feature-set smoke checklist
-(command actions, cooldown, tap/linger, context overrides) and the X11 gate
-have **not** yet been run — do not read this entry as a claim that live
-verification of the full feature set is complete. It will be updated with
-real results before the `v0.2.0` tag is created.
+`release/v0-next-readiness` branch. A physical smoke test on the primary AMD
+Plasma/KWin 6.7.3 Wayland host on 2026-08-06 confirmed the full feature set
+live: per-monitor ownership (including the shared boundary between two
+monitors), single-Apply activation, cooldown, tap vs. linger, command
+actions (including a live attempt to smuggle shell metacharacters through,
+proven inert), all four context-precedence levels physically confirmed
+across the host's real virtual desktops, the v2→v3 upgrade, save/reload
+failure-message classification, and repeated-reload stability. The **X11
+gate**, an **interrupted-upgrade** gate, and an **uninstall** gate have
+**not** yet been run — do not read this entry as a claim that the release is
+fully gated. See `tasks/todo.md` for the exact outstanding checklist. It
+will be updated with real results before the `v0.2.0` tag is created.
 
 ### Added
 
@@ -49,6 +53,15 @@ real results before the `v0.2.0` tag is created.
   editing) and a Help dialog explaining hot zones, actions, cooldown,
   tap/linger, and the context fallback order. German and Dutch translations
   are complete.
+- **Application icon**: a `hicolor`-theme icon (`assets/icons/`), installed
+  by `setup.sh` to `${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/512x512/apps/`
+  and referenced from the desktop entry as `Icon=hotcorners-per-monitor`
+  instead of a generic system icon. Confirmed live: correctly resolved by
+  `kmenuedit` and the application-menu launcher, byte-identical to the
+  repository source. Newly added `hicolor` icons do not appear in
+  Kickoff/taskbar within an already-running `plasmashell` session — a
+  structural KDE/Qt icon-cache limitation, not specific to this project —
+  and are expected to display normally after the next login/Plasma restart.
 
 ### Fixed
 
@@ -143,18 +156,43 @@ real results before the `v0.2.0` tag is created.
 ### Platform validation
 
 - **Wayland**: validated on Plasma 6.4 (dedicated QTimer-capability and
-  tap/linger-timing gates, see `specs/spikes/results/`) and on Plasma 6.7.3
-  (live install/upgrade/dispatch smoke test on this project's AMD
-  development host).
+  tap/linger-timing gates, see `specs/spikes/results/`) and on Plasma 6.7.3.
+  A full physical feature-set smoke test on this project's AMD development
+  host (2026-08-06) confirmed live: per-monitor ownership including the
+  shared boundary between the two monitors; single-Apply activation;
+  cooldown (suppression within the window, retrigger after it, 0 ms
+  behavior, default 350 ms); tap vs. linger (tap, linger, stay-zone cancel,
+  default threshold/stay-zone, cooldown interaction); command actions
+  (exactly-once execution, byte-exact argument preservation, a live attempt
+  to smuggle `;`, `$()`, backticks, `&&` and `|` through proven inert, the
+  documented `av` D-Bus wire format, and distinct error names for malformed
+  input); all four context-precedence levels plus explicit-`None`-blocks-
+  fallback, physically confirmed across the host's real four virtual
+  desktops, with correct discovery names/IDs and non-destructive Refresh;
+  the v2→v3 upgrade (cancel path, accept path, preserved bindings/cooldowns,
+  schemaVersion 3 on disk); save/reload failure-message classification
+  (missing tool, write failure, reload failure, stale-write conflict, each
+  reproduced live with an isolated `PATH` that never touched the real system
+  tools); and repeated-reload stability (3 cycles, the script's own
+  `/Scripting` object ID held constant, no duplicate triggers,
+  `kwin_wayland`'s PID unchanged for the entire session). See
+  `tasks/todo.md` for the full checklist and the two non-blocking findings
+  (ambiguous-ownership fail-closed not physically reproducible on
+  non-overlapping hardware; Kickoff/taskbar icon display needs a
+  `plasmashell` restart to pick up a newly added icon).
 - **X11**: QTimer capability and tap/linger timing specifically have a
-  recorded Plasma 6.4 X11 pass. Commands and context resolution have **not**
-  yet had a dedicated X11 gate run — this is an open release-candidate item,
-  not a completed one.
+  recorded Plasma 6.4 X11 pass. Commands, cooldown, tap/linger and context
+  resolution have **not** yet had a dedicated X11 gate run — this is an open
+  release-candidate item, not a completed one. The 2026-08-06 smoke test was
+  Wayland-only.
 - No live verification yet exists for interrupted-upgrade recovery,
   uninstall, or hot-unplug/rename behavior with the current (command +
-  cooldown + tap/linger + context) feature set on this host. See
-  `tasks/todo.md` and the release-candidate gate plan for the exact
-  outstanding checklist.
+  cooldown + tap/linger + context) feature set on this host. (Stale/
+  unresolvable saved context identifiers are confirmed to remain visible
+  rather than being silently dropped — spot-checked live with a synthetic
+  ID — but an actual rename/removal of a real desktop or activity, and a
+  physical monitor hot-unplug, remain untested.) See `tasks/todo.md` and the
+  release-candidate gate plan for the exact outstanding checklist.
 - The `unloadScript`/`loadScript`/`Script.run()` reload mechanism was proven
   live on Plasma/KWin 6.7.3 Wayland on this project's AMD development host:
   a plain `reconfigure` reloaded neither script code nor `MonitorConfigs`,
@@ -170,10 +208,13 @@ real results before the `v0.2.0` tag is created.
   now activates a newly changed binding immediately, `setup.sh` installs
   and reloads successfully, the previously-existing shortcut bindings still
   work, and the application-menu launcher fix (absolute installed launcher
-  path in the desktop entry) works alongside the direct shell launcher.
-  `uninstall.sh` and the command/cooldown/tap-linger/context feature set
-  have not yet had their own live retest — see `tasks/todo.md` for the
-  exact outstanding checklist.
+  path in the desktop entry) works alongside the direct shell launcher. The
+  2026-08-06 smoke test then live-retested the full command/cooldown/
+  tap-linger/context feature set on top of this (see above) — three
+  additional Apply/reload cycles during that pass held the script's
+  `/Scripting` object ID constant with no duplicate triggers. `uninstall.sh`
+  and interrupted-upgrade recovery have not yet had their own live retest —
+  see `tasks/todo.md` for the exact outstanding checklist.
 
 ### Deferred to future work (not in v0.2.0)
 
