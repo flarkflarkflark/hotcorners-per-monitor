@@ -46,13 +46,13 @@ from config_schema import (
 )
 from PyQt6.QtCore import Qt, QSize, QRect, pyqtSignal
 from PyQt6.QtGui import (
-    QGuiApplication, QPainter, QPen, QBrush, QColor, QPalette, QFont,
+    QCursor, QGuiApplication, QPainter, QPen, QBrush, QColor, QPalette, QFont,
 )
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
     QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QMainWindow, QMessageBox, QPushButton, QScrollArea, QSizePolicy, QSpinBox,
-    QVBoxLayout, QWidget, QInputDialog,
+    QToolTip, QVBoxLayout, QWidget, QInputDialog,
 )
 
 # -----------------------------------------------------------------------------
@@ -419,6 +419,7 @@ POSITION_IDS = [pid for (pid, _label) in POSITION_LAYOUT]
 # Mark for xgettext
 _("Top-left"); _("Top"); _("Top-right"); _("Left"); _("Right")
 _("Bottom-left"); _("Bottom"); _("Bottom-right")
+_("Top midpoint"); _("Right midpoint"); _("Bottom midpoint"); _("Left midpoint")
 _("Command"); _("Program"); _("Arguments")
 _("Add"); _("Edit"); _("Remove"); _("Move Up"); _("Move Down")
 _("Argument")
@@ -452,6 +453,38 @@ def position_label(pos_id: str) -> str:
         if pid == pos_id:
             return _(label)
     return pos_id
+
+
+ZONE_TOOLTIP_POSITION_LABELS = {
+    "TopLeft": "Top-left",
+    "Top": "Top midpoint",
+    "TopRight": "Top-right",
+    "Left": "Left midpoint",
+    "Right": "Right midpoint",
+    "BottomLeft": "Bottom-left",
+    "Bottom": "Bottom midpoint",
+    "BottomRight": "Bottom-right",
+}
+
+
+def zone_tooltip_position_label(pos_id: str) -> str:
+    """Corner labels stay bare ("Top-left"); edge midpoints are suffixed
+    ("Right midpoint") so the tooltip cannot be misread as a corner."""
+    return _(ZONE_TOOLTIP_POSITION_LABELS.get(pos_id, pos_id))
+
+
+def action_display_text(action: dict | None) -> str:
+    if not isinstance(action, dict):
+        return _("No action")
+    action_type = action.get("type", "none")
+    if action_type == "shortcut":
+        return action.get("name") or _("No action")
+    if action_type == "command":
+        program = action.get("program", "")
+        if program:
+            return _("Run: {program}").format(program=program)
+        return _("Run command")
+    return _("No action")
 
 
 def context_kind_label(kind: str) -> str:
@@ -907,13 +940,31 @@ class MonitorCanvas(QWidget):
         self.config = config
         self.selected = None   # (monitor_name, position_id)
         self.hovered = None
+        self.tooltip_provider = None  # Callable[[str, str], str] | None
+        self._default_tooltip = ""
         self.setMouseTracking(True)
         self.setMinimumHeight(260)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
+    def set_default_tooltip(self, text: str):
+        """Tooltip shown while hovering the canvas but no handle. Use this
+        instead of setToolTip() directly, which per-handle hover overrides."""
+        self._default_tooltip = text
+        if not self.hovered:
+            self.setToolTip(text)
+
     def set_config(self, config: dict):
         self.config = config
         self.update()
+        self._refresh_hover_tooltip()
+
+    def _refresh_hover_tooltip(self):
+        """Re-derive the tooltip for whatever handle is currently hovered, so
+        an edit made without moving the mouse is reflected immediately."""
+        if self.hovered and self.tooltip_provider:
+            text = self.tooltip_provider(*self.hovered)
+            self.setToolTip(text)
+            QToolTip.showText(QCursor.pos(), text, self)
 
     def _bounding_box(self):
         if not self.monitors:
@@ -1077,12 +1128,17 @@ class MonitorCanvas(QWidget):
                 Qt.CursorShape.PointingHandCursor if hit
                 else Qt.CursorShape.ArrowCursor
             )
+            if hit and self.tooltip_provider:
+                self.setToolTip(self.tooltip_provider(*hit))
+            else:
+                self.setToolTip(self._default_tooltip)
             self.update()
 
     def leaveEvent(self, event):
         if self.hovered is not None:
             self.hovered = None
             self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.setToolTip(self._default_tooltip)
             self.update()
 
     def select(self, monitor_name, pos_id):
@@ -1542,12 +1598,13 @@ class MainWindow(QMainWindow):
         body_layout.addWidget(canvas_header)
 
         self.canvas = MonitorCanvas(self.monitors, self._canvas_config())
-        self.canvas.setToolTip(_(
+        self.canvas.set_default_tooltip(_(
             "Your monitors, arranged as they are on your desk. Click one of "
             "the eight handles on a monitor — four corners and four edge "
             "midpoints — to choose which hot zone to configure. Filled "
             "handles already have an action."
         ))
+        self.canvas.tooltip_provider = self._zone_tooltip_text
         self.canvas.cornerSelected.connect(self._on_corner_selected)
         body_layout.addWidget(self.canvas, 2)
 
@@ -1888,6 +1945,41 @@ class MainWindow(QMainWindow):
             if not isinstance(monitors, dict):
                 monitors = {}
         return {"monitors": monitors}
+
+    def _zone_tooltip_text(self, monitor_name: str, position_id: str) -> str:
+        """Hover text for one hot-zone handle: monitor, zone, and the action
+        that actually applies in the GUI-selected context right now."""
+        position_text = zone_tooltip_position_label(position_id)
+
+        if not self.is_v3:
+            binding = self.config.get("monitors", {}).get(monitor_name, {})
+            action = binding.get(position_id, {}).get("action") if isinstance(binding, dict) else None
+            return _("{monitor} — {position}: {action}").format(
+                monitor=monitor_name, position=position_text,
+                action=action_display_text(action),
+            )
+
+        own = get_context_binding(self.config, self.active_context_key, monitor_name, position_id)
+        own_tap = own.get("tap") if isinstance(own, dict) else None
+        if isinstance(own_tap, dict) and own_tap.get("type") in {"none", "shortcut", "command"}:
+            return _("{monitor} — {position}: {action}").format(
+                monitor=monitor_name, position=position_text,
+                action=action_display_text(own_tap),
+            )
+
+        if self.active_context_key != "default":
+            fallback = get_default_v3_binding(self.config, monitor_name, position_id)
+            fallback_tap = fallback.get("tap") if isinstance(fallback, dict) else None
+            if isinstance(fallback_tap, dict) and fallback_tap.get("type") in {"none", "shortcut", "command"}:
+                return _("{monitor} — {position}: {action} (inherited from Default)").format(
+                    monitor=monitor_name, position=position_text,
+                    action=action_display_text(fallback_tap),
+                )
+
+        return _("{monitor} — {position}: {action}").format(
+            monitor=monitor_name, position=position_text,
+            action=action_display_text(None),
+        )
 
     def _refresh_context_selector(self):
         if not self.is_v3:
