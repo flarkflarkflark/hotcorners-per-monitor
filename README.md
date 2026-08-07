@@ -163,11 +163,10 @@ Pull requests with translations are very welcome.
 
 ## Roadmap
 
-Only v0.1.0 has been tagged and released. v0.2.0 is implemented and tested on
-`main`, currently in release-candidate preparation — see `CHANGELOG.md` for
-the draft release notes, `tasks/todo.md` for the exact outstanding release
-gates (manual platform verification and tagging), and `specs/ROADMAP_SPEC.md`
-for the normative scope.
+Only v0.1.0 has been tagged and released. v0.2.0 is implemented, tested, and
+has passed its physical Wayland and X11 validation gates on `main` — see
+`CHANGELOG.md` for the release notes and `specs/ROADMAP_SPEC.md` for the
+normative scope. Only tagging and publishing remain; see `tasks/todo.md`.
 
 ### v0.1.0 (tagged, released)
 - Visual monitor arrangement canvas with click-to-configure handles
@@ -175,18 +174,20 @@ for the normative scope.
 - Action types: none, invoke shortcut (built-in catalogue + custom)
 - Translations: English, Dutch, German
 
-### v0.2.0 (release candidate — implemented, not yet tagged)
+### v0.2.0 (implemented, gates passed, not yet tagged)
 - Direct command execution as an action type (in addition to shortcuts), via a session-D-Bus helper with no implicit shell
 - Cooldown per corner to prevent rapid double-fires
 - "Tap vs linger" — short touch does action A, holding for N ms does action B
 - Per-activity and per-virtual-desktop configuration overrides, with default fallback
+- Activity/desktop discovery in the GUI via KDE D-Bus interfaces, with stale saved identifiers kept visible instead of silently dropped
+- Contextual help, tooltips, and hover-over-hot-zone assignment previews
+- An application icon
 - Output ownership fails closed on ambiguous/overlapping/cloned monitor geometry instead of guessing
 - Installer hardening: safe upgrades that can't destroy the running install, and atomic file replacement so an interrupted setup can't leave a broken install
-- Outstanding before tagging: manual X11 verification of the full feature set, a physical smoke-test pass, and interrupted-upgrade/uninstall gates — see `tasks/todo.md`
+- Physically validated on both Wayland and X11 (Plasma/KWin 6.7.3 and 6.7.4); see `CHANGELOG.md` for the full validation summary. Remaining before tagging: only the tag/publish step itself — see `tasks/todo.md`.
 
 ### Future work (deferred out of v0.2.0, not dropped)
 - French, Spanish, Italian translations (desktop entry, KWin package metadata, and GUI)
-- Activity/desktop discovery in the GUI (currently entered as free text; nothing queries KDE for the available list)
 
 ### v0.4.0+
 - Native KWin/System Settings configuration integration

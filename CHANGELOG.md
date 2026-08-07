@@ -2,19 +2,27 @@
 
 ## v0.2.0 (release candidate — not yet tagged or released)
 
-**Status: draft.** This entry describes the feature set on `main` as of the
-`release/v0-next-readiness` branch. A physical smoke test on the primary AMD
-Plasma/KWin 6.7.3 Wayland host on 2026-08-06 confirmed the full feature set
-live: per-monitor ownership (including the shared boundary between two
-monitors), single-Apply activation, cooldown, tap vs. linger, command
-actions (including a live attempt to smuggle shell metacharacters through,
-proven inert), all four context-precedence levels physically confirmed
-across the host's real virtual desktops, the v2→v3 upgrade, save/reload
-failure-message classification, and repeated-reload stability. The **X11
-gate**, an **interrupted-upgrade** gate, and an **uninstall** gate have
-**not** yet been run — do not read this entry as a claim that the release is
-fully gated. See `tasks/todo.md` for the exact outstanding checklist. It
-will be updated with real results before the `v0.2.0` tag is created.
+**Status: gates passed, not yet tagged.** This entry describes the feature
+set on `main` as of the `release/v0-next-readiness` branch. Physical smoke
+tests confirmed the full feature set live on both required platforms: the
+primary AMD host's Plasma/KWin 6.7.3 **Wayland** session (2026-08-06) and
+the same host's Plasma/KWin 6.7.4 **X11** session (2026-08-07) — per-monitor
+ownership (including the shared boundary between two monitors), single-Apply
+activation, cooldown, tap vs. linger, command actions (including a live
+attempt to smuggle shell metacharacters through, proven inert), all four
+context-precedence levels, the v2→v3 upgrade, save/reload failure-message
+classification, and repeated-reload stability. The X11 pass additionally
+covered interrupted-upgrade resilience (5 real `setup.sh` failure
+boundaries), a live `uninstall.sh`/`setup.sh` reinstall cycle, a software
+output disable/re-enable substitute for hot-unplug, and virtual-desktop/
+activity rename and stale-ID handling. A **physical cable hot-unplug** was
+not performed — the software substitute was explicitly accepted in its
+place. Human sign-off on all shipped defaults and semantics (cooldown,
+linger threshold, stay-zone radius, context precedence, explicit-None
+fallback-blocking, no-implicit-shell command execution) is recorded in
+`tasks/todo.md`. No release blocker remains under this scope. It will be
+updated again only if further findings surface before the `v0.2.0` tag is
+created.
 
 ### Added
 
@@ -53,6 +61,16 @@ will be updated with real results before the `v0.2.0` tag is created.
   editing) and a Help dialog explaining hot zones, actions, cooldown,
   tap/linger, and the context fallback order. German and Dutch translations
   are complete.
+- **Hot-zone hover tooltips**: hovering a corner or edge handle in the
+  monitor canvas shows the output name, zone, and the action that actually
+  applies in the GUI-selected context (e.g. `DP-2 — Top-left: Overview`).
+  For v3/context-aware configs, a binding inherited from Default is labeled
+  explicitly (`… (inherited from Default)`) rather than presented as a
+  direct assignment, and an explicit `None` still reads as a plain
+  "No action" since it blocks fallback rather than inheriting. The tooltip
+  is re-derived on every config mutation, so an edit is reflected
+  immediately without Apply or reopening the GUI. German and Dutch
+  translations complete.
 - **Application icon**: a `hicolor`-theme icon (`assets/icons/`), installed
   by `setup.sh` to `${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/512x512/apps/`
   and referenced from the desktop entry as `Icon=hotcorners-per-monitor`
@@ -65,6 +83,15 @@ will be updated with real results before the `v0.2.0` tag is created.
 
 ### Fixed
 
+- **Configured-zone highlighting in v3 mode**: the monitor canvas only ever
+  checked the v2 binding shape (`action`) to decide whether a hot-zone
+  handle should paint as configured, so every zone in a v3/context-aware
+  config looked unconfigured regardless of its actual `tap`/`linger`
+  action until clicked. Found live on X11 during the v2→v3 upgrade gate.
+  Both shapes are now recognized, and a zone with only a linger action
+  (tap set to none) still counts as configured; the canvas continues to
+  reflect only each context's own direct binding, not resolved fallback
+  state.
 - **Context precedence cascade**: the runtime now actually walks the
   documented `activity+desktop → activity → desktop → default` fallback
   order. Previously it resolved only a single most-specific key, so an
@@ -180,19 +207,39 @@ will be updated with real results before the `v0.2.0` tag is created.
   (ambiguous-ownership fail-closed not physically reproducible on
   non-overlapping hardware; Kickoff/taskbar icon display needs a
   `plasmashell` restart to pick up a newly added icon).
-- **X11**: QTimer capability and tap/linger timing specifically have a
-  recorded Plasma 6.4 X11 pass. Commands, cooldown, tap/linger and context
-  resolution have **not** yet had a dedicated X11 gate run — this is an open
-  release-candidate item, not a completed one. The 2026-08-06 smoke test was
-  Wayland-only.
-- No live verification yet exists for interrupted-upgrade recovery,
-  uninstall, or hot-unplug/rename behavior with the current (command +
-  cooldown + tap/linger + context) feature set on this host. (Stale/
-  unresolvable saved context identifiers are confirmed to remain visible
-  rather than being silently dropped — spot-checked live with a synthetic
-  ID — but an actual rename/removal of a real desktop or activity, and a
-  physical monitor hot-unplug, remain untested.) See `tasks/todo.md` and the
-  release-candidate gate plan for the exact outstanding checklist.
+- **X11**: QTimer capability and tap/linger timing have a recorded Plasma
+  6.4 X11 pass. The full feature set additionally had a dedicated X11 gate
+  run on this project's AMD development host, Plasma/KWin 6.7.4, on
+  2026-08-07: per-monitor triggering (including the shared boundary, using
+  this session's real XRandr output names rather than Wayland's connector
+  names for the same hardware), single-Apply, cooldown, tap/linger, command
+  actions, all four context-precedence levels plus discovery, the v2→v3
+  upgrade, and repeated-reload stability (script ID held constant, no
+  duplicate triggers, `kwin_x11` PID unchanged for the entire session) all
+  passed. A mid-gate finding — v3/context-aware configs painted every hot
+  zone as unconfigured in the canvas — was fixed and re-verified live before
+  the gate continued; see "Fixed" above.
+- **Interrupted-upgrade, uninstall, hot-unplug and context rename**: all
+  verified live on the X11 host on 2026-08-07. Interrupted-upgrade
+  resilience was driven end-to-end through 5 real `setup.sh` failure
+  boundaries (before GUI replacement, mid-staged-GUI-install, before
+  command-runner replacement, before desktop-entry/icon replacement, before
+  KWin reload) in an isolated HOME, each confirming no half-written targets
+  and a clean recovery on rerun. `uninstall.sh` was run for real against the
+  live install: the script unloaded immediately, all project-owned files
+  were removed, and unrelated files/scripts/config were untouched, matching
+  documented policy; `setup.sh` then achieved full recovery. Hot-unplug was
+  exercised as a **software output disable/re-enable** substitute — accepted
+  explicitly in place of a physical cable pull, which was **not** performed:
+  the remaining monitor kept working, the disabled output's binding failed
+  closed with no cross-contamination, config was preserved, and everything
+  recovered cleanly on re-enable with no duplicate outputs or script
+  objects. A real virtual desktop was renamed (binding stayed attached to
+  the stable ID), a temporary desktop was created/bound/removed (the stale
+  context entry stayed visible rather than being silently dropped, and
+  fallback worked correctly), and the sole activity was renamed and restored
+  — activity **removal** was not attempted, since removing the only activity
+  was judged not low-risk.
 - The `unloadScript`/`loadScript`/`Script.run()` reload mechanism was proven
   live on Plasma/KWin 6.7.3 Wayland on this project's AMD development host:
   a plain `reconfigure` reloaded neither script code nor `MonitorConfigs`,
@@ -213,8 +260,9 @@ will be updated with real results before the `v0.2.0` tag is created.
   tap-linger/context feature set on top of this (see above) — three
   additional Apply/reload cycles during that pass held the script's
   `/Scripting` object ID constant with no duplicate triggers. `uninstall.sh`
-  and interrupted-upgrade recovery have not yet had their own live retest —
-  see `tasks/todo.md` for the exact outstanding checklist.
+  and interrupted-upgrade recovery were then live-retested on the X11 host
+  on 2026-08-07 (see "Platform validation" above) with the same clean
+  result.
 
 ### Deferred to future work (not in v0.2.0)
 

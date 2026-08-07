@@ -109,7 +109,7 @@ variant-wrapped, and must not assume a fixed-arity struct.
 
 ## Commands
 
-`tests/run-tests.sh` runs the current Python and JavaScript suites (228 Python tests passed, 2 skipped; 192 JavaScript tests, as of this writing). The CMake/CTest commands below apply from v0.4 onward, once the `kcm/` scaffold exists:
+`tests/run-tests.sh` runs the current Python and JavaScript suites (268 Python tests passed, 2 skipped; 192 JavaScript tests, as of this writing). The CMake/CTest commands below apply from v0.4 onward, once the `kcm/` scaffold exists:
 
 ```bash
 ./tests/run-tests.sh                 # all Python and JavaScript tests
@@ -202,10 +202,19 @@ No framework, abstraction or dependency is added before a roadmap requirement ne
 - KCM-only removal leaves the backend and user configuration intact.
 - The full automated suite and required manual gates pass on Wayland and X11 before release.
 
-## Open Review Points
+## Review Points (resolved)
 
-- Confirm or adjust the proposed 350 ms cooldown default.
-- Confirm or adjust the proposed 500 ms linger default.
-- Confirm the context precedence and per-binding inheritance rules.
-- Confirm or adjust the proposed 8-logical-pixel linger stay zone.
-- Plasma 6.4 Wayland and X11 test environments are established and have recorded QTimer-capability and tap/linger-timing gate results (`specs/spikes/results/`); the proposed defaults below were implemented against them but have not received the explicit human sign-off this section still requires.
+Explicit human sign-off recorded 2026-08-07 (see `tasks/todo.md`) on all
+previously-open defaults and semantics:
+
+- 350 ms cooldown default — confirmed.
+- 500 ms linger default — confirmed.
+- Context precedence and per-binding inheritance rules (activity+desktop →
+  activity → desktop → default; explicit `None` blocks fallback) — confirmed.
+- 8-logical-pixel linger stay zone — confirmed.
+- Direct/no-implicit-shell command execution — confirmed.
+
+Plasma 6.4 Wayland and X11 test environments recorded QTimer-capability and
+tap/linger-timing gate results (`specs/spikes/results/`); the full v0.2.0
+feature set was additionally validated live on Plasma/KWin 6.7.3 Wayland and
+6.7.4 X11 (see `CHANGELOG.md`).

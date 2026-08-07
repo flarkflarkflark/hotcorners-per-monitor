@@ -7,7 +7,7 @@
 - [x] Verify published KDE APIs/KCM conventions and identify undocumented timer risk.
 - [x] Record architecture, normative schema, specification and impact analysis.
 - [x] Run adversarial Codex review and reconcile all 21 findings.
-- [ ] Human approves defaults, stay-zone, context inheritance, command-helper design and hard platform gates.
+- [x] Human approves defaults, stay-zone, context inheritance, command-helper design and hard platform gates. Explicit sign-off recorded 2026-08-07: default cooldown 350 ms — YES; default linger threshold 500 ms — YES; stay-zone radius 8 px — YES; context precedence (activity+desktop → activity → desktop → default) — YES; explicit None blocks fallback — YES; command execution remains direct/no implicit shell — YES.
 - [x] Document v3 default-context fallback semantics and examples.
 
 ## v0.2.0
@@ -151,19 +151,50 @@ Activity/Desktop discovery are explicitly out of v0.2.0 scope — see
       `plasmashell` restart — confirmed correct via `kmenuedit` and file
       checksum instead; not a defect, out of scope to force-fix without
       restarting Plasma.
-- [ ] Run interrupted-upgrade and uninstall gates for the full v0.2.0
-      feature set (commands, cooldown, tap/linger, contexts) on Wayland —
-      not yet executed. The 2026-08-06 smoke test covered a normal
-      (non-interrupted) v2→v3 upgrade and did not run `uninstall.sh` against
-      the live install.
-- [ ] Run context/activity rename-removal and hot-unplug gates. (Wired in
-      the runtime — `screensChanged` cleanup, unavailable-context
-      preservation — and the "stale identifier stays visible, not silently
-      dropped" behavior was spot-checked live on 2026-08-06 with a synthetic
-      unresolvable desktop ID; an actual rename/removal of a real desktop or
-      activity, and a physical monitor hot-unplug, remain untested.)
-- [ ] Pass X11 gate for the full v0.2.0 feature set; do not release while required platform support is pending. (Tap/linger timing alone has an X11 pass at Plasma 6.4; commands, cooldown and contexts have not had a dedicated X11 gate run. The 2026-08-06 smoke test was Wayland-only.)
-- [ ] Prepare and create the `v0.2.0` tag, and publish the release, once the gates above pass.
+- [x] Pass the X11 gate for the full v0.2.0 feature set. Completed
+      2026-08-07 on the primary AMD Plasma/KWin 6.7.4 X11 host, same hybrid
+      live-system methodology as the Wayland pass. Sections A–H all PASS:
+      per-monitor triggering (including the shared boundary, using this
+      session's real XRandr output names `DisplayPort-0`/`DisplayPort-1`
+      rather than Wayland's connector names `DP-2`/`DP-1` for the same
+      hardware — expected, not a defect); single Apply; cooldown; tap/linger;
+      command actions; all four context-precedence levels plus discovery on
+      X11; v2→v3 upgrade; repeated-reload stability (script ID held
+      constant, no duplicate triggers, `kwin_x11` PID unchanged for the
+      entire session). Mid-gate finding: `MonitorCanvas._is_configured()`
+      never recognized v3 `tap`/`linger` bindings, so v3 hot zones painted
+      as unconfigured — fixed as a narrow, test-first commit (see below) and
+      re-verified live before resuming.
+- [x] Run interrupted-upgrade and uninstall gates for the full v0.2.0
+      feature set. Completed 2026-08-07: interrupted-upgrade resilience
+      verified end-to-end through 5 real `setup.sh` failure boundaries
+      (before GUI replacement, mid-staged-GUI-install, before command-runner
+      replacement, before desktop-entry/icon replacement, before KWin
+      reload) in an isolated HOME, each confirming no half-written targets,
+      the previously-working install left intact where atomicity promises
+      that, and a clean full recovery on rerun. `uninstall.sh` run for real
+      against the live X11 install: script unloaded immediately, all 9
+      project-owned files removed, unrelated files/scripts/config
+      untouched, matching documented policy; `setup.sh` reinstall achieved
+      full recovery with working bindings.
+- [x] Run context/activity rename-removal and hot-unplug gates. Completed
+      2026-08-07 on the X11 host: a real virtual desktop was renamed (name
+      updated everywhere including GUI discovery, ID stayed stable, its
+      binding kept working), a temporary desktop was created, bound, and
+      removed (the stale context entry survived and stayed visible in the
+      GUI, fallback correctly produced no action rather than leaking the
+      orphaned binding), and the sole activity was renamed and restored
+      (discovery confirmed). Activity **removal** was intentionally not
+      attempted — removing the only activity was judged not low-risk.
+      Hot-unplug was run as a **software output disable/re-enable**
+      substitute (explicitly accepted in place of a physical cable pull):
+      KWin and the script stayed alive while the non-primary output was
+      disabled, the remaining monitor's binding kept working, the disabled
+      output's binding failed closed with no cross-contamination, config
+      was preserved, GUI discovery correctly dropped then restored the
+      output, and no duplicate outputs or script objects appeared across
+      the cycle. A literal physical cable hot-unplug was not performed.
+- [ ] Prepare and create the `v0.2.0` tag, and publish the release, now that the gates above pass.
 
 ## Future work (post-v0.2.0)
 
