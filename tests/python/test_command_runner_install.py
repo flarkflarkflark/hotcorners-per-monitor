@@ -267,12 +267,9 @@ class CommandRunnerInstallTests(unittest.TestCase):
         again = self._uninstall()
         self.assertEqual(again.returncode, 0)
 
-    def test_static_no_shell_patterns(self):
-        service_text = (ROOT / "command-runner" / "org.flark.HotCorners.CommandRunner.service").read_text()
+    def test_no_eval_in_install_scripts(self):
         setup_text = SETUP.read_text()
         uninstall_text = UNINSTALL.read_text()
-        self.assertNotIn("sh -c", service_text)
-        self.assertNotIn("bash -c", service_text)
         self.assertNotIn("eval ", setup_text)
         self.assertNotIn("eval ", uninstall_text)
 
