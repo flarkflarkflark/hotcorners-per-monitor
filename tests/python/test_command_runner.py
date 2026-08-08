@@ -10,7 +10,6 @@ from pathlib import Path
 
 
 MODULE_PATH = Path(__file__).resolve().parents[2] / "command-runner" / "command_runner.py"
-SERVICE_PATH = Path(__file__).resolve().parents[2] / "command-runner" / "org.flark.HotCorners.CommandRunner.service"
 
 
 spec = importlib.util.spec_from_file_location("command_runner", MODULE_PATH)
@@ -258,12 +257,6 @@ class CommandRunnerCoreTests(unittest.TestCase):
             self.assertIs(calls["kwargs"]["stdout"], subprocess.DEVNULL)
             self.assertIs(calls["kwargs"]["stderr"], subprocess.DEVNULL)
             self.assertTrue(calls["kwargs"]["close_fds"])
-
-    def test_service_metadata(self):
-        content = SERVICE_PATH.read_text()
-        self.assertIn("Name=org.flark.HotCorners.CommandRunner", content)
-        self.assertIn("Exec=", content)
-        self.assertIn("command_runner.py", content)
 
     def test_dbus_adapter_tuple_and_internal_error(self):
         ok_adapter = command_runner.CommandRunnerObject(FakeCore((True, "", DummyProcess())))

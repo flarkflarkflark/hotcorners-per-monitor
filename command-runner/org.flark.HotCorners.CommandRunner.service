@@ -1,3 +1,0 @@
-[D-BUS Service]
-Name=org.flark.HotCorners.CommandRunner
-Exec=/usr/bin/python3 /usr/lib/hotcorners-per-monitor/command_runner.py
