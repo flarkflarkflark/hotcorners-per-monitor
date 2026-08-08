@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.2.1 (KDE Store packaging readiness)
+
+Packaging-only release. No feature, behavior, or default changes to the
+application itself — see `docs/KDE_STORE.md` for the full picture.
+
+### Added
+
+- **KDE Store package icon**: `kwin-script/metadata.json` now sets
+  `KPlugin.Icon` to the standard `preferences-desktop-gestures-screenedges`
+  theme icon (the same icon KDE's own Screen Edges KCM uses), so the package
+  has an icon in Discover/System Settings even though a Store-only install
+  never runs `setup.sh` and thus never installs this project's own hicolor
+  icon.
+- **Deterministic KDE Store package builder**: `tools/build-kde-store-package.sh`
+  builds `dist/hotcorners-per-monitor-<version>.zip` containing only the
+  `kwin-script/` KWin payload, with dirty-tree/tag checks, symlink rejection,
+  metadata/XML/KConfigXT validation, a byte-for-byte deterministic zip, and a
+  full install/list/upgrade/remove self-test against the real
+  `kpackagetool6` in an isolated `HOME`.
+- **KDE Store distribution documentation**: `docs/KDE_STORE.md` explains what
+  the Store package does and does not install, why command actions silently
+  no-op without the full installer, how to enable the script afterwards, and
+  the (not recommended) raw-`kwinrc` configuration path. README now links to
+  it from Installation instead of presenting one undifferentiated path.
+
+### Removed
+
+- **Stale packaging templates**: `config-gui/hotcorners-config` and
+  `command-runner/org.flark.HotCorners.CommandRunner.service`, two v0.1.0-era
+  files neither `setup.sh` nor `uninstall.sh` has ever read (both generate
+  the real launcher and D-Bus service files dynamically). A regression test
+  now guards against either reappearing.
+
 ## v0.2.0 (release candidate — not yet tagged or released)
 
 **Status: gates passed, not yet tagged.** This entry describes the feature
