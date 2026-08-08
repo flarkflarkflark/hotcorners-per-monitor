@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.2.2 (production polish)
+
+GUI-only polish release. No config schema change, no runtime action semantics
+change.
+
+### Fixed
+
+- **Monitor canvas inner-edge usability**: adjacent monitors were drawn flush
+  against each other, so inner corner and edge-midpoint handles overlapped
+  and were hard to click independently. Added a presentation-only gutter
+  between adjacent monitors in the visual editor, applied to both drawing
+  and hit-testing. Real monitor geometry and output ownership are untouched;
+  `MonitorConfigs` was verified byte-identical across Apply during physical
+  validation.
+- **Application icon integration**: the GUI never associated itself with its
+  installed `.desktop` file or set an explicit window icon, so the titlebar,
+  Task Manager, and Alt+Tab could show a generic icon instead of the correct
+  one. Fixed on both Wayland and X11. `StartupWMClass` was not added — live
+  X11 inspection confirmed the window's `WM_CLASS` already matches the
+  desktop entry correctly without it.
+
+### Validation
+
+- Wayland physical validation: PASS.
+- X11 physical validation: PASS, with one non-blocking visual note (the
+  canvas gutter is a fixed pixel value, so its on-screen proportion varies
+  slightly with window size — cosmetic only, no functional impact).
+- Automated: 298 Python tests passed, 2 skipped, 21 subtests; 192 JavaScript
+  tests passed, 0 failed; `py_compile`/`bash -n` clean.
+
 ## v0.2.1 (KDE Store packaging readiness)
 
 Packaging-only release. No feature, behavior, or default changes to the
