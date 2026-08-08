@@ -33,9 +33,10 @@ application itself — see `docs/KDE_STORE.md` for the full picture.
   the real launcher and D-Bus service files dynamically). A regression test
   now guards against either reappearing.
 
-## v0.2.0 (release candidate — not yet tagged or released)
+## v0.2.0 (released)
 
-**Status: gates passed, not yet tagged.** This entry describes the feature
+**Status: released.** Tagged `v0.2.0`, merged to `main`, and published as a
+GitHub Release. This entry describes the feature
 set on `main` as of the `release/v0-next-readiness` branch. Physical smoke
 tests confirmed the full feature set live on both required platforms: the
 primary AMD host's Plasma/KWin 6.7.3 **Wayland** session (2026-08-06) and
@@ -53,9 +54,7 @@ not performed — the software substitute was explicitly accepted in its
 place. Human sign-off on all shipped defaults and semantics (cooldown,
 linger threshold, stay-zone radius, context precedence, explicit-None
 fallback-blocking, no-implicit-shell command execution) is recorded in
-`tasks/todo.md`. No release blocker remains under this scope. It will be
-updated again only if further findings surface before the `v0.2.0` tag is
-created.
+`tasks/todo.md`. No release blocker remained under this scope.
 
 ### Added
 
