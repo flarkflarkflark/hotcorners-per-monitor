@@ -10,6 +10,7 @@
         "Description": "Hot corners and edge-midpoints for each monitor.",
         "Description[nl]": "Hot corners per monitor. Stel elke hoek en rand van elk aangesloten scherm onafhankelijk in — onmisbaar bij multi-monitor setups waar de aangrenzende binnenhoeken anders met elkaar conflicteren.",
         "Description[de]": "Aktive Bildschirmecken pro Monitor. Konfigurieren Sie jede Ecke und Kante jedes angeschlossenen Bildschirms unabhängig voneinander — unverzichtbar bei Multi-Monitor-Setups, bei denen sich die angrenzenden Innenecken sonst gegenseitig stören.",
+        "Icon": "preferences-desktop-gestures-screenedges",
         "Id": "hotcorners-per-monitor",
         "License": "GPL-3.0-or-later",
         "Name": "Hot Corners Per Monitor",
