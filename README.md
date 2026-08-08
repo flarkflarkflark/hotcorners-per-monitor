@@ -38,7 +38,7 @@ This project gives every corner and edge of every connected monitor its own inde
 
 ## Installation
 
-One command:
+**Recommended: the full installer.** One command:
 
 ```bash
 ./setup.sh
@@ -71,6 +71,12 @@ To uninstall everything:
 ```bash
 ./uninstall.sh
 ```
+
+**Alternative: the KDE Store.** This project is also distributable as a
+Store/Discover package (KWin Scripts → Get New Scripts), but that path
+installs only the KWin script itself — no configuration GUI, no command
+actions, no desktop entry. See [`docs/KDE_STORE.md`](docs/KDE_STORE.md) for
+what that means and how to get a fully working setup afterwards.
 
 ## Usage
 
