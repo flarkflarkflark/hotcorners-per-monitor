@@ -10,6 +10,13 @@ Works with single-monitor setups too, but is mainly useful for multi-monitor lay
 ![Status](https://img.shields.io/badge/Plasma-6-blueviolet)
 ![License](https://img.shields.io/badge/license-GPL--3.0--or--later-green)
 
+## Get it
+
+- **KDE Store** — [Hot Corners Per Monitor on OpenDesktop](https://www.opendesktop.org/p/2368107/), installable via System Settings → Window Management → KWin Scripts → *Get New Scripts*.
+- **GitHub** — clone this repository and run `./setup.sh` for the complete configuration experience.
+
+See [Installation](#installation) below for the distinction between the two.
+
 ## Why?
 
 KDE's built-in *Screen Edges* settings apply to **all** monitors at once. With two or more displays side-by-side, the inner corners of each screen sit roughly in the middle of your workspace, where you can hit them accidentally dozens of times per day. The only fix has been to disable hot corners entirely — losing the feature on the outer corners where it would actually be useful.
@@ -31,14 +38,31 @@ This project gives every corner and edge of every connected monitor its own inde
 
 ## Requirements
 
-- KDE Plasma 6 (tested on 6.4+)
-- KWin 6 (Wayland or X11)
+- KDE Plasma 6 — tested from Plasma/KWin 6.4.5 through 6.7.x
+- KWin 6, physically validated on both Wayland and X11
 - `python3` and `python-pyqt6` (for the configuration GUI)
 - `kwriteconfig6`, `kreadconfig6`, `qdbus6` (shipped with Plasma 6)
 
 ## Installation
 
-**Recommended: the full installer.** One command:
+Two installation tiers are maintained side by side — pick based on what you need.
+
+### KDE Store (KWin engine only)
+
+Install via System Settings → Window Management → KWin Scripts → **Get New Scripts**, or directly from [OpenDesktop](https://www.opendesktop.org/p/2368107/).
+
+This installs just the KWin script package:
+
+- Registers all 8 hot zones per monitor
+- Shortcut actions, cooldown, tap/linger, and per-activity/per-desktop context overrides all work
+- Does **not** install the visual configuration GUI, the command-runner helper, a launcher, a desktop entry, or translations — KDE's KWin package mechanism has no hook to run this project's `setup.sh`, so those pieces are only available through the full installer below
+- No native "Configure" button in KWin Scripts; hot zones are configured by editing `kwinrc` directly
+
+See [`docs/KDE_STORE.md`](docs/KDE_STORE.md) for the full distinction and the raw-configuration path.
+
+### Full installation (complete configuration experience)
+
+One command:
 
 ```bash
 ./setup.sh
@@ -72,11 +96,7 @@ To uninstall everything:
 ./uninstall.sh
 ```
 
-**Alternative: the KDE Store.** This project is also distributable as a
-Store/Discover package (KWin Scripts → Get New Scripts), but that path
-installs only the KWin script itself — no configuration GUI, no command
-actions, no desktop entry. See [`docs/KDE_STORE.md`](docs/KDE_STORE.md) for
-what that means and how to get a fully working setup afterwards.
+If you already installed from the KDE Store, running `setup.sh` afterwards is safe — it upgrades the same KWin script in place and adds the GUI/helper/desktop integration alongside it.
 
 ## Usage
 
@@ -169,10 +189,9 @@ Pull requests with translations are very welcome.
 
 ## Roadmap
 
-Only v0.1.0 has been tagged and released. v0.2.0 is implemented, tested, and
-has passed its physical Wayland and X11 validation gates on `main` — see
-`CHANGELOG.md` for the release notes and `specs/ROADMAP_SPEC.md` for the
-normative scope. Only tagging and publishing remain; see `tasks/todo.md`.
+v0.1.0, v0.2.0, and v0.2.1 have all been tagged and released — see
+`CHANGELOG.md` for release notes and `specs/ROADMAP_SPEC.md` for v0.2.0's
+normative scope.
 
 ### v0.1.0 (tagged, released)
 - Visual monitor arrangement canvas with click-to-configure handles
@@ -180,7 +199,7 @@ normative scope. Only tagging and publishing remain; see `tasks/todo.md`.
 - Action types: none, invoke shortcut (built-in catalogue + custom)
 - Translations: English, Dutch, German
 
-### v0.2.0 (implemented, gates passed, not yet tagged)
+### v0.2.0 (tagged, released)
 - Direct command execution as an action type (in addition to shortcuts), via a session-D-Bus helper with no implicit shell
 - Cooldown per corner to prevent rapid double-fires
 - "Tap vs linger" — short touch does action A, holding for N ms does action B
@@ -190,7 +209,12 @@ normative scope. Only tagging and publishing remain; see `tasks/todo.md`.
 - An application icon
 - Output ownership fails closed on ambiguous/overlapping/cloned monitor geometry instead of guessing
 - Installer hardening: safe upgrades that can't destroy the running install, and atomic file replacement so an interrupted setup can't leave a broken install
-- Physically validated on both Wayland and X11 (Plasma/KWin 6.7.3 and 6.7.4); see `CHANGELOG.md` for the full validation summary. Remaining before tagging: only the tag/publish step itself — see `tasks/todo.md`.
+- Physically validated on both Wayland and X11 (Plasma/KWin 6.7.3 and 6.7.4); see `CHANGELOG.md` for the full validation summary.
+
+### v0.2.1 (tagged, released)
+- Packaging-only release, no application behavior changes — see `CHANGELOG.md`
+- v0.2.1 was tagged and released on GitHub, and was subsequently published on KDE Store/OpenDesktop: [Hot Corners Per Monitor](https://www.opendesktop.org/p/2368107/)
+- Added the deterministic KDE Store package builder (`tools/build-kde-store-package.sh`) and packaging documentation (`docs/KDE_STORE.md`)
 
 ### Future work (deferred out of v0.2.0, not dropped)
 - French, Spanish, Italian translations (desktop entry, KWin package metadata, and GUI)
