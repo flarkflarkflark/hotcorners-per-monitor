@@ -4,6 +4,8 @@
 
 Deliver v0.2.0, v0.3.0 and the external native v0.4.0 KCM as separate releases. Each release begins from the previous tagged release, uses short-lived feature branches and preserves a working install. The highest risks—configuration compatibility, command execution and linger timing—are tested before broad UI work.
 
+**Status update (2026-08-05):** Phase 1 and Phase 2 below were both implemented before either was tagged and released. By product decision, they now ship together as a single v0.2.0 — see `CHANGELOG.md` and `tasks/todo.md` for current release status. The task breakdown and checkpoints below are kept as-written because they accurately describe how the work was actually built and tested, task by task; only the release/tag boundary changed, not the implementation sequence.
+
 ## Architecture Decisions
 
 - `kwinrc` remains the source of truth across both configuration frontends.

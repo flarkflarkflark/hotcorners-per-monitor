@@ -155,10 +155,27 @@ function buildCommandRequest(action) {
     };
 }
 
+// The helper's Run() is declared with result="QVariantList", which appears on
+// the wire as "av" (array of variants), so individual reply values may reach
+// the script wrapped rather than as bare primitives.
+function unwrapDBusValue(value) {
+    if (isObject(value)) {
+        if (hasOwn(value, "value")) {
+            return value.value;
+        }
+        if (hasOwn(value, "variant")) {
+            return value.variant;
+        }
+    }
+    return value;
+}
+
 function normalizeCommandResult(rawResult) {
     if (Array.isArray(rawResult) && rawResult.length >= 2) {
-        if (typeof rawResult[0] === "boolean" && typeof rawResult[1] === "string") {
-            return {accepted: rawResult[0], errorName: rawResult[1]};
+        const accepted = unwrapDBusValue(rawResult[0]);
+        const errorName = unwrapDBusValue(rawResult[1]);
+        if (typeof accepted === "boolean" && typeof errorName === "string") {
+            return {accepted, errorName};
         }
         return {accepted: false, errorName: "invalid-helper-response"};
     }
@@ -171,29 +188,58 @@ function normalizeCommandResult(rawResult) {
     return {accepted: false, errorName: "invalid-helper-response"};
 }
 
-function invokeCommandHelper(action, helperClient) {
+// callDBus passes the D-Bus reply values to its callback as arguments. A
+// QVariantList reply can arrive either as one array argument or as separate
+// arguments, so accept both shapes.
+function normalizeCommandReplyArgs(replyArgs) {
+    if (!Array.isArray(replyArgs)) {
+        return {accepted: false, errorName: "invalid-helper-response"};
+    }
+    if (replyArgs.length === 1) {
+        return normalizeCommandResult(unwrapDBusValue(replyArgs[0]));
+    }
+    return normalizeCommandResult(replyArgs);
+}
+
+// Reports the outcome through onResult exactly once. Validation and transport
+// failures are reported immediately; a real reply arrives asynchronously,
+// because callDBus never returns one.
+function invokeCommandHelper(action, helperClient, onResult) {
+    const report = typeof onResult === "function" ? onResult : function() {};
+    let reported = false;
+    function reportOnce(result) {
+        if (reported) return;
+        reported = true;
+        report(result);
+    }
+
     const validation = validateCommandAction(action);
     if (!validation.ok) {
-        return {accepted: false, errorName: validation.errorName};
+        reportOnce({accepted: false, errorName: validation.errorName});
+        return;
     }
 
     if (!helperClient || typeof helperClient.call !== "function") {
-        return {accepted: false, errorName: "helper-unavailable"};
+        reportOnce({accepted: false, errorName: "helper-unavailable"});
+        return;
     }
 
     const request = buildCommandRequest(action);
     try {
-        const rawResult = helperClient.call(
+        helperClient.call(
             request.bus,
             request.objectPath,
             request.interfaceName,
             request.methodName,
             request.program,
-            request.argumentsJson
+            request.argumentsJson,
+            function() {
+                reportOnce(normalizeCommandReplyArgs(
+                    Array.prototype.slice.call(arguments)));
+            }
         );
-        return normalizeCommandResult(rawResult);
     } catch (_) {
-        return {accepted: false, errorName: "transport-error"};
+        reportOnce({accepted: false, errorName: "transport-error"});
     }
 }
 
@@ -203,14 +249,15 @@ function createCommandHelperClient() {
     }
 
     return {
-        call(bus, objectPath, interfaceName, methodName, program, argumentsJson) {
+        call(bus, objectPath, interfaceName, methodName, program, argumentsJson, callback) {
             return callDBus(
                 bus,
                 objectPath,
                 interfaceName,
                 methodName,
                 program,
-                argumentsJson
+                argumentsJson,
+                callback
             );
         },
     };
@@ -374,6 +421,54 @@ function getContextBinding(context, outputName, position) {
 
     const binding = monitor[position];
     return isObject(binding) ? binding : null;
+}
+
+// Ordered context keys for the normative precedence cascade:
+// combined activity+desktop, activity, desktop. `default` is not included --
+// it is the final fallback and is handled separately by the resolver, because
+// it applies even when no activity or desktop is active at all.
+function buildContextCascadeKeys(activityId, desktopId) {
+    const activity = typeof activityId === "string" ? activityId : "";
+    const desktop = typeof desktopId === "string" ? desktopId : "";
+    const keys = [];
+
+    if (activity && desktop) {
+        keys.push("activity:" + activity + "|desktop:" + desktop);
+    }
+    if (activity) {
+        keys.push("activity:" + activity);
+    }
+    if (desktop) {
+        keys.push("desktop:" + desktop);
+    }
+    return keys;
+}
+
+// Walks the full precedence cascade for one output/position. The first tier
+// holding a resolvable binding wins, so an explicit `none` in a higher tier
+// blocks lower tiers while a missing or malformed binding continues past them.
+function resolveContextActionCascade(config, activityId, desktopId, outputName, position) {
+    if (!isObject(config) || !isObject(config.contexts)) {
+        return null;
+    }
+
+    const contexts = config.contexts;
+    const keys = buildContextCascadeKeys(activityId, desktopId);
+
+    for (let i = 0; i < keys.length; i++) {
+        const context = hasOwn(contexts, keys[i]) ? contexts[keys[i]] : null;
+        const binding = getContextBinding(context, outputName, position);
+        if (isResolvableBinding(binding)) {
+            return clonePlain(binding);
+        }
+    }
+
+    const defaultContext = hasOwn(contexts, "default") ? contexts.default : null;
+    const defaultBinding = getContextBinding(defaultContext, outputName, position);
+    if (!isResolvableBinding(defaultBinding)) {
+        return null;
+    }
+    return clonePlain(defaultBinding);
 }
 
 function resolveContextAction(config, contextKey, outputName, position) {
@@ -604,7 +699,9 @@ function decideTapLinger(state, event, options) {
     return finish(baseState, [], "ignored");
 }
 
-function getCurrentContextKey(screen) {
+// Current activity and per-output desktop identifiers, kept separate so the
+// precedence cascade can try each tier independently.
+function getCurrentContextIds(screen) {
     const activityId = typeof workspace.currentActivity === "string" ?
         workspace.currentActivity : "";
     let desktopId = "";
@@ -617,6 +714,16 @@ function getCurrentContextKey(screen) {
                typeof workspace.currentDesktop.id === "string") {
         desktopId = workspace.currentDesktop.id;
     }
+
+    return {activityId, desktopId};
+}
+
+// The most specific context key for the current state. Used as the interaction
+// label; binding resolution uses the full cascade, not this single key.
+function getCurrentContextKey(screen) {
+    const ids = getCurrentContextIds(screen);
+    const activityId = ids.activityId;
+    const desktopId = ids.desktopId;
 
     if (activityId && desktopId) {
         return "activity:" + activityId + "|desktop:" + desktopId;
@@ -1106,14 +1213,18 @@ function cleanupRuntime() {
 function getScreenAtCursor() {
     const pos = workspace.cursorPos;
     const screens = workspace.screens;
+    let match = null;
     for (let i = 0; i < screens.length; i++) {
         const g = screens[i].geometry;
         if (pos.x >= g.x && pos.x < g.x + g.width &&
             pos.y >= g.y && pos.y < g.y + g.height) {
-            return screens[i];
+            if (match !== null) {
+                return null;
+            }
+            match = screens[i];
         }
     }
-    return null;
+    return match;
 }
 
 function isDispatchableAction(action) {
@@ -1150,10 +1261,11 @@ function executeAction(action) {
     }
 
     if (action.type === "command") {
-        const result = invokeCommandHelper(action, createCommandHelperClient());
-        if (!result.accepted) {
-            print("hotcorners-per-monitor: command helper error:", result.errorName);
-        }
+        invokeCommandHelper(action, createCommandHelperClient(), function(result) {
+            if (!result.accepted) {
+                print("hotcorners-per-monitor: command helper error:", result.errorName);
+            }
+        });
     }
 }
 
@@ -1163,8 +1275,10 @@ function handleCorner(positionName) {
     const outputName = screen.name;
     if (!outputName) return;
 
+    const ids = getCurrentContextIds(screen);
     const contextKey = getCurrentContextKey(screen);
-    const binding = resolveContextAction(runtimeConfig, contextKey, outputName, positionName);
+    const binding = resolveContextActionCascade(
+        runtimeConfig, ids.activityId, ids.desktopId, outputName, positionName);
     if (!binding) return;
 
     beginTapLingerInteraction(outputName, positionName, screen, binding, contextKey);

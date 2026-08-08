@@ -17,7 +17,27 @@ Current data flow:
 
 1. The PyQt6 GUI detects outputs through `QGuiApplication.screens()`.
 2. It reads and writes one JSON value, `MonitorConfigs`, in `[Script-hotcorners-per-monitor]` in `kwinrc`.
-3. A KWin reconfigure reloads the JavaScript backend.
+3. After every Apply, the GUI reloads the KWin script itself via
+   `org.kde.KWin /KWin reconfigure`, then a documented settle wait
+   (`KWIN_RECONFIGURE_SETTLE_SECONDS`, 0.5s), then
+   `org.kde.kwin.Scripting`: `unloadScript` -> `loadScript` -> `Script.run()`
+   on the returned script ID, using plugin id `hotcorners-per-monitor` and
+   the installed `main.js` path. Two things were proved live on Plasma/KWin
+   6.7.3 Wayland: reconfigure alone reloads neither this script's code nor
+   `MonitorConfigs` (`main.js` only calls `loadConfig()` once, at bootstrap,
+   with no reconfigure signal wired to re-run it) -- so the unload/load/run
+   sequence is required for code reload, repeated three times live with no
+   duplicated `/Scripting` objects and no `kwin_wayland` restart; and
+   `reconfigure` refreshes KWin's own kwinrc cache *asynchronously*, with no
+   completion signal available (confirmed with `dbus-monitor`), so the
+   settle wait is also required -- reloading immediately after reconfigure
+   read the previous `MonitorConfigs` generation, repeatably, until enough
+   wall-clock time elapsed. The 0.5s figure is a conservative compatibility
+   interval with a safety margin over the observed minimum (0.1s
+   insufficient, 0.2s/0.3s sufficient), not a formal KWin guarantee.
+   `setup.sh` uses the same interface and wait; `uninstall.sh` only unloads,
+   with no wait needed. See `tasks/todo.md` for the still-open live retest
+   of this implementation.
 4. The backend registers all eight global electric borders, identifies the output under the pointer, looks up the output/position action and invokes a KDE global shortcut over D-Bus.
 
 Planned data flow:
@@ -36,12 +56,12 @@ Planned data flow:
 
 ## Signals / Active Considerations
 
-- There are currently no automated tests; every behavioral change is high-risk until a harness exists.
+- Python (`tests/python/`) and JavaScript (`tests/js/`) automated test harnesses exist and run via `tests/run-tests.sh`; see `specs/ROADMAP_SPEC.md` for current counts.
 - `MonitorConfigs` is a shared interface between the GUI and KWin script and needs explicit schema migrations.
 - The published KWin scripting API exposes `registerScreenEdge()`, `callDBus()`, activity/desktop access and cursor signals, but the edge callback carries no output argument.
 - KWin 6.7 source exposes a constructible JavaScript `QTimer`; the published API does not guarantee it, so Plasma 6.4 must be proved experimentally.
 - KWin scripts do not expose `QProcess`; direct execution therefore needs the specified session-local D-Bus helper boundary.
-- Plasma 6.4 is the compatibility floor, while the development host is newer (6.7.3); tests must avoid relying only on 6.7 APIs.
-- The local manual test topology is two 3440×1440 DisplayPort outputs (`DP-2`, `DP-1`) at 125% scale, arranged side-by-side on Wayland.
-- X11 behavior requires an additional test environment because the current host session is Wayland; X11 is a hard release gate.
+- Plasma 6.4 is the compatibility floor, while the development host is newer (6.7.3/6.7.4 depending on session); tests must avoid relying only on 6.7 APIs.
+- The local manual test topology is two 3440×1440 DisplayPort outputs at 125% scale, arranged side-by-side, on the same physical host under both Wayland and X11 sessions. Output names differ by session for the identical hardware: Wayland reports connector names (`DP-2`, `DP-1`), X11 reports XRandr names (`DisplayPort-0`, `DisplayPort-1`) — `MonitorConfigs` bindings are keyed by whichever name the active session reports, so a config written under one session type does not automatically apply under the other.
+- X11 behavior requires a genuinely separate X11 session (the primary development session is Wayland); X11 was a hard release gate and has been validated live on Plasma/KWin 6.7.4 X11 — see `CHANGELOG.md`.
 - Connector names are not stable monitor identities across cable/dock changes. v0.2/v0.3 retain them for compatibility, preserve orphaned entries and correct the documentation; v0.4 decides reassignment before fixing the native model.

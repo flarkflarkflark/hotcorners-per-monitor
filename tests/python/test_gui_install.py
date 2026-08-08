@@ -121,11 +121,21 @@ class GuiInstallTests(unittest.TestCase):
     def _make_default_fakes(self):
         # Read/write-safe stand-ins for the KDE utilities setup.sh shells
         # out to. None of these touch the real system.
-        for name in ("kwriteconfig6", "kreadconfig6", "update-desktop-database", "qdbus6"):
+        for name in ("kwriteconfig6", "kreadconfig6", "update-desktop-database", "sleep"):
             self._write_exe(
                 self.fakebin / name,
                 "#!/usr/bin/env bash\nexit 0\n",
             )
+        # A minimal but protocol-correct org.kde.KWin /Scripting stand-in:
+        # reports the script as not currently loaded (so setup.sh skips
+        # unloadScript) and returns a valid script ID from loadScript.
+        self._write_exe(
+            self.fakebin / "qdbus6",
+            "#!/usr/bin/env bash\n"
+            "if [ \"${3:-}\" = \"isScriptLoaded\" ]; then echo false; exit 0; fi\n"
+            "if [ \"${3:-}\" = \"loadScript\" ]; then echo 3; exit 0; fi\n"
+            "exit 0\n",
+        )
         self._write_exe(
             self.fakebin / "msgfmt",
             "#!/usr/bin/env bash\ncp \"$1\" \"$3\"\n",
@@ -206,6 +216,32 @@ class GuiInstallTests(unittest.TestCase):
             msg=f"stdout:\n{probe.stdout}\n\nstderr:\n{probe.stderr}",
         )
         self.assertIn("IMPORT_OK", probe.stdout)
+
+    def test_fresh_install_writes_every_module_the_gui_imports(self):
+        self._install()
+        gui_dir = self._gui_dir()
+
+        for module in ("hotcorners_config.py", "config_schema.py",
+                       "context_provider.py"):
+            self.assertTrue(
+                (gui_dir / module).exists(),
+                f"{module} must be installed; the GUI imports it at startup",
+            )
+
+    def test_installed_gui_matches_repository_source_byte_for_byte(self):
+        # A stale installed GUI copy (from before some repository fix) once
+        # caused a physical retest to reproduce an already-fixed bug,
+        # because the launcher runs the installed copy, not the checkout.
+        # setup.sh must always (re)install the current repository source.
+        self._install()
+        installed = (self._gui_dir() / "hotcorners_config.py").read_bytes()
+        source = (ROOT / "config-gui" / "hotcorners_config.py").read_bytes()
+        self.assertEqual(
+            installed, source,
+            "the installed hotcorners_config.py must match the repository "
+            "source exactly; re-run ./setup.sh --yes after every commit "
+            "that changes it before testing the GUI from the application menu",
+        )
 
     def test_uninstall_removes_gui_directory_including_schema(self):
         self._install()

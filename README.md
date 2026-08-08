@@ -1,5 +1,7 @@
 # Hot Corners Per Monitor
 
+<img src="assets/icons/hotcorners-per-monitor-512.png" alt="Hot Corners Per Monitor icon" width="128" height="128">
+
 Per-monitor hot corners and edge-midpoints for KDE Plasma/KWin.
 
 Hot Corners Per Monitor is a small KDE Plasma/KWin utility for something Plasma does not currently expose in the UI: configurable hot zones for each individual monitor, including inner monitor edges and corners that Plasma's built-in Screen Edges cannot target cleanly.
@@ -18,11 +20,14 @@ This project gives every corner and edge of every connected monitor its own inde
 
 - **Visual monitor layout** — see your actual screen arrangement at scale and click directly on the corner or edge you want to configure. Configured handles are highlighted so you see your setup at a glance.
 - **8 hot zones per monitor: 4 corners + 4 edge midpoints**, configured independently.
-- **Monitor identification by output name** (e.g. `DP-1`, `HDMI-A-1`) — stable across reboots and cable swaps.
-- **Action types:** none, or invoke any KDE global shortcut (`Overview`, `Grid View`, `Show Desktop`, lock screen, application launcher, or any custom shortcut name).
+- **Monitor identification by output name** (e.g. `DP-1`, `HDMI-A-1`) — usually stable across reboots, but connector names are not a stable hardware identity: reordering physical ports or swapping which cable feeds which port can change which name a given monitor gets. Disconnected/renamed output entries are kept, not deleted, so you don't lose configuration when that happens.
+- **Action types:** none, invoke any KDE global shortcut (`Overview`, `Grid View`, `Show Desktop`, lock screen, application launcher, or any custom shortcut name), or run a command directly (no shell involved unless you explicitly configure one).
+- **Per-binding cooldown** to suppress rapid repeated activation of the same corner.
+- **Tap vs. linger** — configure a short-touch action and a separate hold-until-threshold action per corner/edge.
+- **Per-activity and per-virtual-desktop overrides** — bindings can differ by activity, virtual desktop, or both, falling back to a default when no override applies.
 - **Scales gracefully** from one monitor to many. Tested with up to six displays in mixed arrangements (side-by-side, stacked, ultrawide+laptop).
 - **Multilingual** — English, Dutch (Nederlands), German (Deutsch). More translations welcome.
-- **Pure standards compliance** — config is stored in `kwinrc` and applied via KWin's standard reconfigure mechanism.
+- **Pure standards compliance** — config is stored in `kwinrc` and applied by reloading the KWin script through KWin's supported `org.kde.kwin.Scripting` D-Bus interface.
 
 ## Requirements
 
@@ -48,7 +53,7 @@ That runs an interactive setup that:
 - Compiles & installs translation `.mo` files to `~/.local/share/locale/{nl,de}/LC_MESSAGES/`
 - **Enables the KWin script** in `kwinrc` (no need to flip the switch in System Settings)
 - **Offers to disable the built-in KDE hot corners** that would otherwise double-fire (with a backup saved to `~/.config/hotcorners-per-monitor-backup-electric-borders.conf` for restoration)
-- Reloads KWin so changes take effect immediately
+- Reloads the Hot Corners KWin script so changes take effect immediately
 - Optionally launches the GUI when done
 
 Flags:
@@ -73,7 +78,13 @@ To uninstall everything:
 2. The window shows all your connected monitors at scale, with eight clickable handles per monitor (four corners + four edge midpoints).
 3. Click a handle to select that corner/edge. The editor below shows the current action.
 4. Pick an action from the dropdown — or choose "Custom shortcut" to type a `kglobalaccel` component and shortcut name directly.
-5. Click **Apply**. KWin reloads instantly; your changes are live.
+5. Click **Apply**. The GUI saves the configuration, asks KWin to
+   reconfigure, waits briefly for that to take effect, then reloads the Hot
+   Corners script itself (unload, load, run — a plain KWin reconfigure was
+   proven not to pick up either code or configuration changes, and proven
+   to need a short settle wait before it does). If that reload fails (for
+   example, `qdbus6` is missing), you'll see a "Reload uncertain" warning
+   instead of a silent false success — Apply again, or log out and back in.
 
 Configured handles fill in with the accent colour so you can see your active setup at a glance. The handles at the inner edges (where two monitors touch) are easy to spot and easy to leave unconfigured — solving the original multi-monitor frustration.
 
@@ -133,6 +144,8 @@ The configuration is a single JSON-encoded string stored under the standard KWin
 
 Keys are output names as reported by KWin's `screen.name` (matches the connector name on Wayland and the XRandr output name on X11). Position IDs are `TopLeft`, `Top`, `TopRight`, `Right`, `BottomRight`, `Bottom`, `BottomLeft`, `Left`. Omitted positions default to no action.
 
+This is the simplest supported document shape; it's what a fresh install produces and what v0.1 configuration normalizes into. Command actions, cooldown, tap/linger and context overrides (activity/desktop/default) extend the same document — see `specs/CONFIG_SCHEMA.md` for the complete normative schema, and `CHANGELOG.md` for what's new in v0.2.0.
+
 ## Translating
 
 Translations live in `config-gui/translations/<locale>/LC_MESSAGES/hotcorners-config.po`. To add a new language:
@@ -150,21 +163,31 @@ Pull requests with translations are very welcome.
 
 ## Roadmap
 
-### v0.1.0 (initial public release)
+Only v0.1.0 has been tagged and released. v0.2.0 is implemented, tested, and
+has passed its physical Wayland and X11 validation gates on `main` — see
+`CHANGELOG.md` for the release notes and `specs/ROADMAP_SPEC.md` for the
+normative scope. Only tagging and publishing remain; see `tasks/todo.md`.
+
+### v0.1.0 (tagged, released)
 - Visual monitor arrangement canvas with click-to-configure handles
 - All 8 hot zones per monitor (4 corners + 4 edge midpoints), monitor matching by output name
 - Action types: none, invoke shortcut (built-in catalogue + custom)
 - Translations: English, Dutch, German
 
-### v0.2.0
-- Direct command execution as an action type (in addition to shortcuts)
+### v0.2.0 (implemented, gates passed, not yet tagged)
+- Direct command execution as an action type (in addition to shortcuts), via a session-D-Bus helper with no implicit shell
 - Cooldown per corner to prevent rapid double-fires
-- French, Spanish, Italian translations
-
-### v0.3.0
 - "Tap vs linger" — short touch does action A, holding for N ms does action B
-- Per-activity configuration
-- Per-virtual-desktop configuration
+- Per-activity and per-virtual-desktop configuration overrides, with default fallback
+- Activity/desktop discovery in the GUI via KDE D-Bus interfaces, with stale saved identifiers kept visible instead of silently dropped
+- Contextual help, tooltips, and hover-over-hot-zone assignment previews
+- An application icon
+- Output ownership fails closed on ambiguous/overlapping/cloned monitor geometry instead of guessing
+- Installer hardening: safe upgrades that can't destroy the running install, and atomic file replacement so an interrupted setup can't leave a broken install
+- Physically validated on both Wayland and X11 (Plasma/KWin 6.7.3 and 6.7.4); see `CHANGELOG.md` for the full validation summary. Remaining before tagging: only the tag/publish step itself — see `tasks/todo.md`.
+
+### Future work (deferred out of v0.2.0, not dropped)
+- French, Spanish, Italian translations (desktop entry, KWin package metadata, and GUI)
 
 ### v0.4.0+
 - Native KWin/System Settings configuration integration

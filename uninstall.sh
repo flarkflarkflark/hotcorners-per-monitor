@@ -14,6 +14,7 @@
 set -euo pipefail
 
 SCRIPT_ID="hotcorners-per-monitor"
+XDG_DATA_HOME_EFFECTIVE="${XDG_DATA_HOME:-${HOME}/.local/share}"
 KWIN_DIR="${HOME}/.local/share/kwin/scripts/${SCRIPT_ID}"
 BIN_FILE="${HOME}/.local/bin/hotcorners-config"
 DESKTOP_FILE="${HOME}/.local/share/applications/hotcorners-config.desktop"
@@ -21,6 +22,7 @@ LIB_DIR="${HOME}/.local/share/${SCRIPT_ID}"
 HELPER_LIB_DIR="${HOME}/.local/lib/${SCRIPT_ID}/command-runner"
 HELPER_PY="${HELPER_LIB_DIR}/command_runner.py"
 DBUS_SERVICE_FILE="${HOME}/.local/share/dbus-1/services/org.flark.HotCorners.CommandRunner.service"
+ICON_FILE="${XDG_DATA_HOME_EFFECTIVE}/icons/hicolor/512x512/apps/hotcorners-per-monitor.png"
 BACKUP_FILE="${HOME}/.config/${SCRIPT_ID}-backup-electric-borders.conf"
 
 NONINTERACTIVE=0
@@ -72,6 +74,42 @@ if command -v kwriteconfig6 >/dev/null 2>&1; then
         --key MonitorConfigs --delete 2>/dev/null || true
 fi
 
+# Unload the running script from KWin's memory before removing its files, so
+# the process backing it stops immediately rather than lingering until next
+# login. A plain "qdbus6 org.kde.KWin /KWin reconfigure" was proven live
+# (Plasma/KWin 6.7.3 Wayland) not to unload a script's code, unlike
+# unloadScript. This is best-effort: an actual D-Bus error is reported but
+# never blocks the file cleanup below, and a script that was already
+# unloaded (or never loaded) is not treated as an error.
+say "Unloading the KWin script"
+UNLOAD_QDBUS=""
+if command -v qdbus6 >/dev/null 2>&1; then
+    UNLOAD_QDBUS=qdbus6
+elif command -v qdbus-qt6 >/dev/null 2>&1; then
+    UNLOAD_QDBUS=qdbus-qt6
+elif command -v qdbus >/dev/null 2>&1; then
+    UNLOAD_QDBUS=qdbus
+fi
+
+if [ -n "${UNLOAD_QDBUS}" ]; then
+    if UNLOAD_OUTPUT="$("${UNLOAD_QDBUS}" org.kde.KWin /Scripting unloadScript "${SCRIPT_ID}" 2>&1)"; then
+        UNLOAD_STATUS=0
+    else
+        UNLOAD_STATUS=$?
+    fi
+
+    if [ "${UNLOAD_STATUS}" -ne 0 ]; then
+        warn "Could not unload the running KWin script (D-Bus error): ${UNLOAD_OUTPUT}"
+        dim "Continuing with file removal anyway."
+    elif [ "${UNLOAD_OUTPUT}" = "true" ]; then
+        ok "KWin script unloaded"
+    else
+        dim "KWin script was not currently loaded"
+    fi
+else
+    dim "qdbus6 not found; skipping KWin script unload (D-Bus unavailable)"
+fi
+
 say "Removing files"
 if [ -d "${KWIN_DIR}" ]; then
     rm -rf "${KWIN_DIR}"
@@ -83,7 +121,7 @@ if command -v kpackagetool6 >/dev/null 2>&1; then
     kpackagetool6 --type=KWin/Script --remove "${SCRIPT_ID}" >/dev/null 2>&1 || true
 fi
 
-for path in "${BIN_FILE}" "${DESKTOP_FILE}" "${HELPER_PY}" "${DBUS_SERVICE_FILE}"; do
+for path in "${BIN_FILE}" "${DESKTOP_FILE}" "${HELPER_PY}" "${DBUS_SERVICE_FILE}" "${ICON_FILE}"; do
     if [ -e "${path}" ]; then
         rm -f "${path}"
         ok "Removed ${path}"
@@ -102,19 +140,29 @@ if [ -d "${HOME}/.local/lib/${SCRIPT_ID}" ]; then
     rmdir "${HOME}/.local/lib/${SCRIPT_ID}" 2>/dev/null || true
 fi
 
-# Translations
-for lang in nl de; do
-    mo="${HOME}/.local/share/locale/${lang}/LC_MESSAGES/hotcorners-config.mo"
-    [ -f "$mo" ] && rm -f "$mo" && ok "Removed ${mo}"
+# Translations — remove every installed hotcorners-config catalog,
+# whatever language it's in, rather than a hardcoded language list.
+for mo in "${HOME}/.local/share/locale/"*/LC_MESSAGES/hotcorners-config.mo; do
+    [ -f "$mo" ] || continue
+    rm -f "$mo" && ok "Removed ${mo}"
 done
 
-# Reload KWin so the script is actually unloaded
-if command -v qdbus6 >/dev/null 2>&1; then
-    qdbus6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
-elif command -v qdbus-qt6 >/dev/null 2>&1; then
-    qdbus-qt6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
-elif command -v qdbus >/dev/null 2>&1; then
-    qdbus org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+# Best-effort cache refresh, matching setup.sh's policy: neither cache
+# affects whether the files above were actually removed, so a failure here
+# is reported but never treated as an uninstall failure.
+if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    if kbuildsycoca6 >/dev/null 2>&1; then
+        ok "Refreshed KDE system configuration cache (kbuildsycoca6)"
+    else
+        warn "kbuildsycoca6 failed to refresh the KDE system configuration cache (non-fatal)"
+    fi
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    if gtk-update-icon-cache -q -t -f "${XDG_DATA_HOME_EFFECTIVE}/icons/hicolor" >/dev/null 2>&1; then
+        ok "Refreshed hicolor icon theme cache (gtk-update-icon-cache)"
+    else
+        warn "gtk-update-icon-cache failed to refresh the hicolor icon theme cache (non-fatal)"
+    fi
 fi
 
 echo

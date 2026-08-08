@@ -341,8 +341,16 @@ function createBackend({
     if (!omitCallDBus) {
         contextValues.callDBus = function(...args) {
             dbusCalls.push(args);
-            if (callDBusImpl) {
-                return callDBusImpl(...args);
+            if (!callDBusImpl) {
+                return undefined;
+            }
+            const reply = callDBusImpl(...args);
+            // Real callDBus is always asynchronous: it returns nothing and
+            // passes the D-Bus reply values to the trailing callback. Model
+            // that here so these tests exercise the real reply path.
+            const callback = args[args.length - 1];
+            if (typeof callback === "function" && reply !== undefined) {
+                callback(reply);
             }
             return undefined;
         };
@@ -947,8 +955,8 @@ test("resolver is called exactly once per trigger", () => {
         }),
     });
     let resolveCalls = 0;
-    const originalResolve = backend.context.resolveContextAction;
-    backend.context.resolveContextAction = function(...args) {
+    const originalResolve = backend.context.resolveContextActionCascade;
+    backend.context.resolveContextActionCascade = function(...args) {
         resolveCalls++;
         return originalResolve(...args);
     };

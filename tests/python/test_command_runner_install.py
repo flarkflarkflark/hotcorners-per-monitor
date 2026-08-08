@@ -121,6 +121,11 @@ class CommandRunnerInstallTests(unittest.TestCase):
             "exit 0\n",
         )
         self._write_exe(
+            self.fakebin / "sleep",
+            "#!/usr/bin/env bash\n"
+            "exit 0\n",
+        )
+        self._write_exe(
             self.fakebin / "msgfmt",
             "#!/usr/bin/env bash\n"
             "cp \"$1\" \"$3\"\n",
@@ -132,6 +137,8 @@ class CommandRunnerInstallTests(unittest.TestCase):
             "  printf 'true\\n\\n'\n"
             "  exit 0\n"
             "fi\n"
+            "if [ \"${3:-}\" = \"isScriptLoaded\" ]; then echo false; exit 0; fi\n"
+            "if [ \"${3:-}\" = \"loadScript\" ]; then echo 3; exit 0; fi\n"
             "exit 0\n",
         )
 

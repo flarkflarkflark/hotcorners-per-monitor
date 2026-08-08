@@ -276,14 +276,48 @@ class CooldownGuiTests(unittest.TestCase):
             save_config.assert_called_once()
             critical.assert_called_once()
 
+    def test_success_dialog_only_appears_after_a_complete_reload(self):
+        config = copy.deepcopy(self.v2_fixture)
+        window, loaded = self.make_window(config)
+        window._on_corner_selected("DP-1", "TopLeft")
+        window.cooldown_spin.setValue(321)
+
+        reload_error = self.gui.ReloadFailedError(loaded.baseline, "run() failed")
+        with patch.object(self.gui, "save_config", side_effect=reload_error), \
+                patch.object(self.gui.QMessageBox, "information") as information, \
+                patch.object(self.gui.QMessageBox, "warning") as warning:
+            window._on_apply()
+
+        information.assert_not_called()
+        warning.assert_called_once()
+        # The write itself succeeded, so the GUI must adopt the new baseline
+        # even though the reload could not be confirmed.
+        self.assertIs(window.config_baseline, loaded.baseline)
+
+    def test_success_dialog_appears_once_reload_actually_succeeds(self):
+        config = copy.deepcopy(self.v2_fixture)
+        window, loaded = self.make_window(config)
+        window._on_corner_selected("DP-1", "TopLeft")
+        window.cooldown_spin.setValue(321)
+
+        with patch.object(self.gui, "save_config", return_value=loaded.baseline), \
+                patch.object(self.gui.QMessageBox, "information") as information, \
+                patch.object(self.gui.QMessageBox, "warning") as warning:
+            window._on_apply()
+
+        information.assert_called_once()
+        warning.assert_not_called()
+
     def test_translation_template_contains_cooldown_strings(self):
         content = POT_PATH.read_text(encoding="utf-8")
         for text in [
             "Cooldown",
-            "Minimum time before this hot zone can trigger again.",
             "Invalid cooldown value.",
         ]:
             self.assertIn(f'msgid "{text}"', content)
+        # The cooldown tooltip now also states units and range, so it wraps
+        # across quoted lines rather than living on a single msgid line.
+        self.assertIn("Minimum time before this hot zone can trigger again", content)
 
 
 if __name__ == "__main__":

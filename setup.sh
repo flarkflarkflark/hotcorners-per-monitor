@@ -19,6 +19,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 SCRIPT_ID="hotcorners-per-monitor"
 
 # Target locations (user-level install — no sudo needed)
+XDG_DATA_HOME_EFFECTIVE="${XDG_DATA_HOME:-${HOME}/.local/share}"
 KWIN_DIR="${HOME}/.local/share/kwin/scripts/${SCRIPT_ID}"
 BIN_DIR="${HOME}/.local/bin"
 DESKTOP_DIR="${HOME}/.local/share/applications"
@@ -28,6 +29,9 @@ HELPER_LIB_DIR="${HOME}/.local/lib/${SCRIPT_ID}/command-runner"
 HELPER_PY="${HELPER_LIB_DIR}/command_runner.py"
 DBUS_SERVICE_DIR="${HOME}/.local/share/dbus-1/services"
 HELPER_SERVICE="${DBUS_SERVICE_DIR}/org.flark.HotCorners.CommandRunner.service"
+ICON_SOURCE="${SCRIPT_DIR}/assets/icons/hotcorners-per-monitor-512.png"
+ICON_DIR="${XDG_DATA_HOME_EFFECTIVE}/icons/hicolor/512x512/apps"
+ICON_FILE="${ICON_DIR}/hotcorners-per-monitor.png"
 PYTHON_BIN="$(command -v python3 || true)"
 
 # Flags
@@ -226,16 +230,55 @@ echo
 say "Installing configuration GUI"
 
 mkdir -p "${LIB_DIR}"
-cp "${SCRIPT_DIR}/config-gui/hotcorners_config.py" "${LIB_DIR}/"
-cp "${SCRIPT_DIR}/config-gui/config_schema.py" "${LIB_DIR}/"
+
+# Stage each file next to its destination and only replace the live copy
+# after it validates, so a failed or interrupted staging step can never
+# leave a truncated/broken file in place of a previously-working install.
+gui_tmp="$(mktemp "${LIB_DIR}/hotcorners_config.py.tmp.XXXXXX")"
+cp "${SCRIPT_DIR}/config-gui/hotcorners_config.py" "${gui_tmp}"
+if ! python3 -c "import sys; compile(open(sys.argv[1], 'rb').read(), sys.argv[1], 'exec')" "${gui_tmp}"; then
+    rm -f "${gui_tmp}"
+    fail "Staged hotcorners_config.py failed to compile — aborting before touching the installed copy"
+    exit 1
+fi
+chmod --reference="${SCRIPT_DIR}/config-gui/hotcorners_config.py" "${gui_tmp}"
+mv "${gui_tmp}" "${LIB_DIR}/hotcorners_config.py"
+
+schema_tmp="$(mktemp "${LIB_DIR}/config_schema.py.tmp.XXXXXX")"
+cp "${SCRIPT_DIR}/config-gui/config_schema.py" "${schema_tmp}"
+if ! python3 -c "import sys; compile(open(sys.argv[1], 'rb').read(), sys.argv[1], 'exec')" "${schema_tmp}"; then
+    rm -f "${schema_tmp}"
+    fail "Staged config_schema.py failed to compile — aborting before touching the installed copy"
+    exit 1
+fi
+chmod --reference="${SCRIPT_DIR}/config-gui/config_schema.py" "${schema_tmp}"
+mv "${schema_tmp}" "${LIB_DIR}/config_schema.py"
+
+provider_tmp="$(mktemp "${LIB_DIR}/context_provider.py.tmp.XXXXXX")"
+cp "${SCRIPT_DIR}/config-gui/context_provider.py" "${provider_tmp}"
+if ! python3 -c "import sys; compile(open(sys.argv[1], 'rb').read(), sys.argv[1], 'exec')" "${provider_tmp}"; then
+    rm -f "${provider_tmp}"
+    fail "Staged context_provider.py failed to compile — aborting before touching the installed copy"
+    exit 1
+fi
+chmod --reference="${SCRIPT_DIR}/config-gui/context_provider.py" "${provider_tmp}"
+mv "${provider_tmp}" "${LIB_DIR}/context_provider.py"
+
 ok "GUI installed to ${LIB_DIR}"
 
 mkdir -p "${BIN_DIR}"
-cat > "${BIN_DIR}/hotcorners-config" << EOF
+launcher_tmp="$(mktemp "${BIN_DIR}/hotcorners-config.tmp.XXXXXX")"
+cat > "${launcher_tmp}" << EOF
 #!/usr/bin/env bash
 exec python3 "${LIB_DIR}/hotcorners_config.py" "\$@"
 EOF
-chmod +x "${BIN_DIR}/hotcorners-config"
+if ! bash -n "${launcher_tmp}"; then
+    rm -f "${launcher_tmp}"
+    fail "Staged launcher failed syntax check — aborting before touching the installed copy"
+    exit 1
+fi
+chmod 0755 "${launcher_tmp}"
+mv "${launcher_tmp}" "${BIN_DIR}/hotcorners-config"
 ok "Launcher installed to ${BIN_DIR}/hotcorners-config"
 
 # PATH check
@@ -244,12 +287,102 @@ if ! echo ":${PATH}:" | grep -q ":${BIN_DIR}:"; then
     dim "Add to your shell profile: export PATH=\"\$HOME/.local/bin:\$PATH\""
 fi
 
+# Escapes/quotes a value for the Desktop Entry Specification's Exec key
+# (https://specifications.freedesktop.org/desktop-entry-spec/latest/exec-variables.html):
+# reserved characters (space among them) require the whole value to be
+# double-quoted, with backslash, backtick, dollar sign and double quote
+# themselves backslash-escaped inside the quotes.
+desktop_entry_exec_value() {
+    local value="$1"
+    case "$value" in
+        *' '*|*"$(printf '\t')"*|*'"'*|*"'"*|*'`'*|*'$'*|*'\'*|*'<'*|*'>'*|*'~'*|*'|'*|*'&'*|*';'*|*'*'*|*'?'*|*'#'*|*'('*|*')'*)
+            value="${value//\\/\\\\}"
+            value="${value//\"/\\\"}"
+            value="${value//\`/\\\`}"
+            value="${value//\$/\\\$}"
+            printf '"%s"' "$value"
+            ;;
+        *)
+            printf '%s' "$value"
+            ;;
+    esac
+}
+
 mkdir -p "${DESKTOP_DIR}"
-cp "${SCRIPT_DIR}/config-gui/hotcorners-config.desktop" "${DESKTOP_DIR}/"
+desktop_tmp="$(mktemp "${DESKTOP_DIR}/hotcorners-config.desktop.tmp.XXXXXX")"
+# Graphical Plasma sessions do not necessarily inherit ~/.local/bin in PATH,
+# so a bare "Exec=hotcorners-config" can leave the application-menu entry
+# unable to find the launcher even though it works from a shell. Substitute
+# the repository template's Exec line with the absolute installed launcher
+# path instead of shipping it hardcoded.
+HCPM_DESKTOP_EXEC="$(desktop_entry_exec_value "${BIN_DIR}/hotcorners-config")"
+awk -v exec_line="Exec=${HCPM_DESKTOP_EXEC}" '
+    /^Exec=/ { print exec_line; next }
+    { print }
+' "${SCRIPT_DIR}/config-gui/hotcorners-config.desktop" > "${desktop_tmp}"
+if [ ! -s "${desktop_tmp}" ] || ! head -n1 "${desktop_tmp}" | grep -qx '\[Desktop Entry\]'; then
+    rm -f "${desktop_tmp}"
+    fail "Staged desktop entry failed validation — aborting before touching the installed copy"
+    exit 1
+fi
+chmod --reference="${SCRIPT_DIR}/config-gui/hotcorners-config.desktop" "${desktop_tmp}"
+mv "${desktop_tmp}" "${DESKTOP_DIR}/hotcorners-config.desktop"
 ok "Desktop entry installed"
 
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "${DESKTOP_DIR}" 2>/dev/null || true
+fi
+
+# ----- install application icon -----
+echo
+say "Installing application icon"
+
+mkdir -p "${ICON_DIR}"
+icon_tmp="$(mktemp "${ICON_FILE}.tmp.XXXXXX")"
+cp "${ICON_SOURCE}" "${icon_tmp}"
+if [ "$(head -c8 "${icon_tmp}" | od -An -tx1 | tr -d ' \n')" != "89504e470d0a1a0a" ]; then
+    rm -f "${icon_tmp}"
+    fail "Staged icon failed PNG signature validation — aborting before touching the installed copy"
+    exit 1
+fi
+if ! cmp -s "${ICON_SOURCE}" "${icon_tmp}"; then
+    rm -f "${icon_tmp}"
+    fail "Staged icon does not match the repository source — aborting before touching the installed copy"
+    exit 1
+fi
+chmod 0644 "${icon_tmp}"
+mv "${icon_tmp}" "${ICON_FILE}"
+if ! cmp -s "${ICON_SOURCE}" "${ICON_FILE}"; then
+    fail "Installed icon verification failed at ${ICON_FILE}"
+    exit 1
+fi
+ok "Icon installed to ${ICON_FILE}"
+
+# ----- refresh icon/desktop caches -----
+# Best-effort, matching the existing update-desktop-database policy above:
+# neither cache is required for the icon/desktop entry files themselves to
+# be correct, so a refresh failure is reported but never aborts setup.
+echo
+say "Refreshing icon/desktop caches"
+
+if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    if kbuildsycoca6 >/dev/null 2>&1; then
+        ok "Refreshed KDE system configuration cache (kbuildsycoca6)"
+    else
+        warn "kbuildsycoca6 failed to refresh the KDE system configuration cache (non-fatal)"
+    fi
+else
+    dim "kbuildsycoca6 not found; skipping (non-fatal)"
+fi
+
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    if gtk-update-icon-cache -q -t -f "${XDG_DATA_HOME_EFFECTIVE}/icons/hicolor" >/dev/null 2>&1; then
+        ok "Refreshed hicolor icon theme cache (gtk-update-icon-cache)"
+    else
+        warn "gtk-update-icon-cache failed to refresh the hicolor icon theme cache (non-fatal)"
+    fi
+else
+    dim "gtk-update-icon-cache not found; skipping (optional, non-fatal)"
 fi
 
 # ----- install command helper -----
@@ -391,14 +524,67 @@ else
     ok "No conflicting built-in hot corners active"
 fi
 
-# ----- reconfigure kwin -----
+# ----- reload the KWin script -----
+# A plain "qdbus6 org.kde.KWin /KWin reconfigure" was proven live (Plasma/
+# KWin 6.7.3 Wayland) to reload neither the script's code nor MonitorConfigs
+# -- main.js only calls loadConfig() once, at bootstrap. The sequence below
+# was proven live to reliably reload both, repeated three times with no
+# duplicated script objects and no kwin_wayland restart.
+#
+# reconfigure is NoReply/fire-and-forget: it returns before KWin has
+# necessarily reparsed its shared, in-process kwinrc cache, and KWin exposes
+# no completion signal for this (confirmed with dbus-monitor across a 2s
+# window). Proven live: reloading the script immediately after reconfigure
+# still read the previous MonitorConfigs generation; 0.1s was not enough,
+# 0.2s/0.3s were. HCPM_RECONFIGURE_SETTLE_SECONDS is therefore not a formal
+# KWin completion guarantee -- it is a conservative compatibility interval
+# with a safety margin over the observed minimum, that must elapse after
+# reconfigure and before the script reload below so readConfig() sees the
+# new value once the script bootstraps.
+HCPM_RECONFIGURE_SETTLE_SECONDS=0.5
+
 echo
-say "Reloading KWin"
-if "${QDBUS}" org.kde.KWin /KWin reconfigure >/dev/null 2>&1; then
-    ok "KWin reconfigured — script is now live"
+say "Reloading the Hot Corners script"
+
+HCPM_INSTALLED_MAIN_JS="${KWIN_DIR}/contents/code/main.js"
+
+reload_kwin_script() {
+    local was_loaded unloaded script_id
+    if ! "${QDBUS}" org.kde.KWin /KWin reconfigure >/dev/null 2>&1; then
+        fail "Could not ask KWin to reconfigure"
+        return 1
+    fi
+    sleep "${HCPM_RECONFIGURE_SETTLE_SECONDS}"
+
+    was_loaded="$("${QDBUS}" org.kde.KWin /Scripting isScriptLoaded "${SCRIPT_ID}" 2>/dev/null)"
+
+    if [ "${was_loaded}" = "true" ]; then
+        unloaded="$("${QDBUS}" org.kde.KWin /Scripting unloadScript "${SCRIPT_ID}" 2>/dev/null)"
+        if [ "${unloaded}" != "true" ]; then
+            fail "Could not unload the previously running Hot Corners script"
+            return 1
+        fi
+    fi
+
+    script_id="$("${QDBUS}" org.kde.KWin /Scripting loadScript "${HCPM_INSTALLED_MAIN_JS}" "${SCRIPT_ID}" 2>/dev/null)"
+    if ! [[ "${script_id}" =~ ^[0-9]+$ ]]; then
+        fail "Could not load the Hot Corners script (no valid script ID returned)"
+        return 1
+    fi
+
+    if ! "${QDBUS}" org.kde.KWin "/Scripting/Script${script_id}" org.kde.kwin.Script.run >/dev/null 2>&1; then
+        fail "Could not start the reloaded Hot Corners script"
+        return 1
+    fi
+
+    return 0
+}
+
+if reload_kwin_script; then
+    ok "Hot Corners script reloaded — it is now live"
 else
-    warn "Could not reload KWin via D-Bus"
-    dim "You may need to log out and back in for changes to take effect."
+    dim "Fix the issue above and re-run setup.sh, or log out and back in."
+    exit 1
 fi
 
 # ----- done -----

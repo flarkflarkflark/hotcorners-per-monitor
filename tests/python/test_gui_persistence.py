@@ -58,8 +58,20 @@ class FakeKWinPersistence:
             self.written_payloads.append(command[-1])
             return CompletedProcess(command, 0, stdout="", stderr="")
         if command[0] == "qdbus6":
-            self.reload_count += 1
-            return CompletedProcess(command, 0, stdout="", stderr="")
+            path = command[2] if len(command) > 2 else ""
+            method = command[3] if len(command) > 3 else ""
+            if path == "/KWin" and method == "reconfigure":
+                return CompletedProcess(command, 0, stdout="", stderr="")
+            if path == "/Scripting" and method == "isScriptLoaded":
+                return CompletedProcess(command, 0, stdout="true", stderr="")
+            if path == "/Scripting" and method == "unloadScript":
+                return CompletedProcess(command, 0, stdout="true", stderr="")
+            if path == "/Scripting" and method == "loadScript":
+                return CompletedProcess(command, 0, stdout="3", stderr="")
+            if path.startswith("/Scripting/Script") and method == "org.kde.kwin.Script.run":
+                self.reload_count += 1
+                return CompletedProcess(command, 0, stdout="", stderr="")
+            raise AssertionError(f"unexpected qdbus6 command: {command}")
         raise AssertionError(f"unexpected command: {command}")
 
     def external_set(self, raw):
@@ -97,7 +109,8 @@ class GuiPersistenceTests(unittest.TestCase):
     def test_load_v01_normalizes_in_memory_without_writing(self):
         fake = FakeKWinPersistence(self.legacy_text)
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep"):
             loaded = self.module.load_config()
 
         self.assertEqual(loaded.document, self.v2)
@@ -110,7 +123,8 @@ class GuiPersistenceTests(unittest.TestCase):
     def test_load_v02_is_idempotent_and_does_not_write(self):
         fake = FakeKWinPersistence(self.v2_text)
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep"):
             loaded = self.module.load_config()
 
         self.assertEqual(loaded.document, self.v2)
@@ -124,7 +138,8 @@ class GuiPersistenceTests(unittest.TestCase):
     def test_gui_load_save_preserves_extensions_at_all_levels(self):
         fake = FakeKWinPersistence(self.extension_text)
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep"):
             loaded = self.module.load_config()
             updated_baseline = self.module.save_config(
                 loaded.document, loaded.baseline
@@ -154,7 +169,8 @@ class GuiPersistenceTests(unittest.TestCase):
         fake = FakeKWinPersistence(self.extension_text)
         fixture_before = copy.deepcopy(self.extended)
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep"):
             loaded = self.module.load_config()
             loaded.document["monitors"]["DP-1"]["TopLeft"]["action"][
                 "name"
@@ -178,7 +194,8 @@ class GuiPersistenceTests(unittest.TestCase):
     def test_second_own_save_preserves_extensions_without_drift(self):
         fake = FakeKWinPersistence(self.extension_text)
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep"):
             loaded = self.module.load_config()
             first_baseline = self.module.save_config(
                 loaded.document, loaded.baseline
@@ -195,7 +212,8 @@ class GuiPersistenceTests(unittest.TestCase):
         fake = FakeKWinPersistence(self.extension_text)
         external_raw = json.dumps({"schemaVersion": 2, "monitors": {}})
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep"):
             loaded = self.module.load_config()
             loaded.document["monitors"]["DP-1"]["TopLeft"]["action"][
                 "name"
@@ -211,7 +229,8 @@ class GuiPersistenceTests(unittest.TestCase):
     def test_unchanged_baseline_writes_v02_and_reloads_once(self):
         fake = FakeKWinPersistence(self.legacy_text)
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep"):
             loaded = self.module.load_config()
             updated_baseline = self.module.save_config(
                 loaded.document, loaded.baseline
@@ -236,7 +255,8 @@ class GuiPersistenceTests(unittest.TestCase):
         fake = FakeKWinPersistence(self.legacy_text)
         external_raw = json.dumps({"schemaVersion": 2, "monitors": {}})
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep"):
             loaded = self.module.load_config()
             fake.external_set(external_raw)
             with self.assertRaises(self.module.StaleConfigError):
@@ -250,7 +270,8 @@ class GuiPersistenceTests(unittest.TestCase):
     def test_external_delete_between_load_and_save_is_a_conflict(self):
         fake = FakeKWinPersistence(self.legacy_text)
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep"):
             loaded = self.module.load_config()
             fake.external_delete()
             with self.assertRaises(self.module.StaleConfigError):
@@ -265,7 +286,8 @@ class GuiPersistenceTests(unittest.TestCase):
         fake = FakeKWinPersistence(key_exists=False)
         external_raw = self.v2_text
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep"):
             loaded = self.module.load_config()
             fake.external_set(external_raw)
             with self.assertRaises(self.module.StaleConfigError):
@@ -279,7 +301,8 @@ class GuiPersistenceTests(unittest.TestCase):
     def test_second_own_save_uses_updated_baseline_without_false_conflict(self):
         fake = FakeKWinPersistence(self.legacy_text)
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep"):
             loaded = self.module.load_config()
             first_baseline = self.module.save_config(
                 loaded.document, loaded.baseline
@@ -296,15 +319,14 @@ class GuiPersistenceTests(unittest.TestCase):
     def test_failed_write_does_not_update_baseline_or_reload(self):
         fake = FakeKWinPersistence(self.legacy_text)
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep"):
             loaded = self.module.load_config()
             original_baseline = loaded.baseline
             fake.fail_next_write = True
-            failed_baseline = self.module.save_config(
-                loaded.document, original_baseline
-            )
+            with self.assertRaises(self.module.ConfigWriteError):
+                self.module.save_config(loaded.document, original_baseline)
 
-            self.assertIsNone(failed_baseline)
             self.assertEqual(loaded.baseline, original_baseline)
             self.assertEqual(fake.reload_count, 0)
 
@@ -319,7 +341,8 @@ class GuiPersistenceTests(unittest.TestCase):
     def test_explicit_none_survives_load_and_save(self):
         fake = FakeKWinPersistence(self.legacy_text)
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep"):
             loaded = self.module.load_config()
             updated_baseline = self.module.save_config(
                 loaded.document, loaded.baseline
@@ -349,12 +372,14 @@ class GuiPersistenceTests(unittest.TestCase):
                     self.module.subprocess, "run", side_effect=fake.run
                 ):
                     loaded = self.module.load_config()
-                    saved_baseline = self.module.save_config(
-                        loaded.document, loaded.baseline
-                    )
+                    with self.assertRaises(
+                        self.module.InvalidConfigDocumentError
+                    ):
+                        self.module.save_config(
+                            loaded.document, loaded.baseline
+                        )
 
                 self.assertIsNone(loaded.document)
-                self.assertIsNone(saved_baseline)
                 self.assertEqual(fake.raw, raw)
                 self.assertEqual(fake.write_attempt_count, 0)
                 self.assertEqual(fake.write_count, 0)
@@ -364,7 +389,8 @@ class GuiPersistenceTests(unittest.TestCase):
         fake = FakeKWinPersistence(self.legacy_text)
         legacy_before = copy.deepcopy(self.legacy)
 
-        with patch.object(self.module.subprocess, "run", side_effect=fake.run):
+        with patch.object(self.module.subprocess, "run", side_effect=fake.run), \
+                patch.object(self.module.time, "sleep"):
             loaded = self.module.load_config()
             document_before = copy.deepcopy(loaded.document)
             baseline_before = loaded.baseline

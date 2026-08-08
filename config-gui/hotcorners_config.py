@@ -16,10 +16,12 @@ import locale
 import os
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
+from context_provider import ContextOption, DBusContextProvider
 from config_schema import (
     DEFAULT_COOLDOWN_MS,
     DEFAULT_LINGER_MS,
@@ -31,6 +33,7 @@ from config_schema import (
     build_command_action,
     create_v2_binding,
     normalize_config_to_v2,
+    migrate_config_v2_to_v3,
     normalize_config_to_v3,
     normalize_action,
     normalize_cooldown_ms,
@@ -43,13 +46,13 @@ from config_schema import (
 )
 from PyQt6.QtCore import Qt, QSize, QRect, pyqtSignal
 from PyQt6.QtGui import (
-    QGuiApplication, QPainter, QPen, QBrush, QColor, QPalette, QFont,
+    QCursor, QGuiApplication, QPainter, QPen, QBrush, QColor, QPalette, QFont,
 )
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
     QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QMainWindow, QMessageBox, QPushButton, QScrollArea, QSizePolicy, QSpinBox,
-    QVBoxLayout, QWidget, QInputDialog,
+    QToolTip, QVBoxLayout, QWidget, QInputDialog,
 )
 
 # -----------------------------------------------------------------------------
@@ -57,25 +60,29 @@ from PyQt6.QtWidgets import (
 # -----------------------------------------------------------------------------
 APP_DOMAIN = "hotcorners-config"
 
-def setup_i18n():
+def setup_i18n(locale_dirs=None):
     """Initialize gettext using the system locale."""
     try:
         locale.setlocale(locale.LC_ALL, "")
     except locale.Error:
         pass
-    locale_dirs = [
-        Path(__file__).parent / "translations",
-        Path("/usr/share/locale"),
-        Path.home() / ".local/share/locale",
-    ]
+    if locale_dirs is None:
+        locale_dirs = [
+            Path(__file__).parent / "translations",
+            Path("/usr/share/locale"),
+            Path.home() / ".local/share/locale",
+        ]
     for d in locale_dirs:
-        if d.exists():
-            try:
-                gettext.bindtextdomain(APP_DOMAIN, str(d))
-                gettext.textdomain(APP_DOMAIN)
-                break
-            except (OSError, AttributeError):
-                continue
+        if not d.exists():
+            continue
+        if not any(d.glob(f"*/LC_MESSAGES/{APP_DOMAIN}.mo")):
+            continue
+        try:
+            gettext.bindtextdomain(APP_DOMAIN, str(d))
+            gettext.textdomain(APP_DOMAIN)
+            break
+        except (OSError, AttributeError):
+            continue
     return gettext.gettext
 
 _ = setup_i18n()
@@ -86,6 +93,32 @@ _ = setup_i18n()
 KWINRC_GROUP = "Script-hotcorners-per-monitor"
 CONFIG_KEY = "MonitorConfigs"
 MISSING_CONFIG_SENTINEL_PREFIX = "__HOTCORNERS_PER_MONITOR_MISSING_"
+
+# A plain "qdbus6 org.kde.KWin /KWin reconfigure" was proven live (Plasma/KWin
+# 6.7.3 Wayland) to reload neither this script's code nor MonitorConfigs --
+# main.js only calls loadConfig() once, at bootstrap, with no reconfigure
+# signal wired to re-run it. The sequence below (unload, load, run) was
+# proven live to reliably reload both, repeated three times with no
+# duplicated script objects and no kwin_wayland restart.
+KWIN_SCRIPT_PLUGIN_ID = "hotcorners-per-monitor"
+KWIN_SCRIPT_INSTALLED_PATH = str(
+    Path.home() / ".local" / "share" / "kwin" / "scripts" /
+    KWIN_SCRIPT_PLUGIN_ID / "contents" / "code" / "main.js"
+)
+
+# "qdbus6 org.kde.KWin /KWin reconfigure" is a NoReply (fire-and-forget) D-Bus
+# call: it returns as soon as the message is dispatched, not once KWin has
+# actually reparsed its shared, in-process kwinrc cache. Proven live on
+# Plasma/KWin 6.7.3 Wayland: reloading the script immediately after
+# reconfigure (no wait) still read the *previous* MonitorConfigs generation,
+# repeatably; 0.1s was not enough, 0.2s and 0.3s were. KWin exposes no
+# completion signal for this (confirmed with dbus-monitor across a 2s
+# window), so this is not a formal completion guarantee -- it is a
+# conservative compatibility interval with a safety margin over the observed
+# minimum, chosen so readConfig() sees the new value once the script
+# bootstraps. It must run after reconfigure and before the script reload
+# sequence below.
+KWIN_RECONFIGURE_SETTLE_SECONDS = 0.5
 
 
 @dataclass(frozen=True)
@@ -100,8 +133,94 @@ class LoadedConfig:
     baseline: ConfigBaseline
 
 
-class StaleConfigError(RuntimeError):
+class ConfigSaveError(RuntimeError):
+    """Base class for the distinct ways saving the configuration can fail."""
+
+
+class StaleConfigError(ConfigSaveError):
     """Raised when MonitorConfigs changed after it was loaded."""
+
+
+class MissingToolError(ConfigSaveError):
+    """Raised when a required KDE command-line tool is not installed."""
+
+    def __init__(self, tool: str):
+        super().__init__(f"required tool not found: {tool}")
+        self.tool = tool
+
+
+class ConfigWriteError(ConfigSaveError):
+    """Raised when kwriteconfig6 ran but failed to store the configuration."""
+
+    def __init__(self, detail: str = ""):
+        super().__init__(detail or "failed to write the configuration")
+        self.detail = detail
+
+
+class InvalidConfigDocumentError(ConfigSaveError):
+    """Raised when the in-memory document cannot be normalized for saving."""
+
+    def __init__(self, detail: str = ""):
+        super().__init__(detail or "configuration document is not valid")
+        self.detail = detail
+
+
+class ReloadFailedError(ConfigSaveError):
+    """Raised when the write succeeded but the Hot Corners KWin script could
+    not be reloaded (unloadScript/loadScript/Script.run).
+
+    Carries the already-updated baseline: the document on disk did change,
+    so the caller must adopt it to avoid a spurious stale-write detection
+    on the next save, even though this reload attempt could not be confirmed.
+    """
+
+    def __init__(self, baseline: "ConfigBaseline", detail: str = ""):
+        super().__init__(detail or "failed to reload the Hot Corners script")
+        self.baseline = baseline
+        self.detail = detail
+
+
+def describe_save_error(error: ConfigSaveError) -> str:
+    """A specific, actionable message for each distinct save failure."""
+    if isinstance(error, StaleConfigError):
+        return _(
+            "The configuration was changed by another program since this "
+            "window opened it. Your edits were not saved, and nothing was "
+            "overwritten. Choose \"Reload from disk\" to load the current "
+            "configuration, then redo your changes."
+        )
+
+    if isinstance(error, MissingToolError):
+        return _(
+            "The required KDE tool \"{tool}\" was not found. It is normally "
+            "part of Plasma 6. Nothing was changed. Install it, then try "
+            "again."
+        ).format(tool=error.tool)
+
+    if isinstance(error, ConfigWriteError):
+        detail = error.detail or _("no further detail was reported")
+        return _(
+            "Writing the configuration to kwinrc failed, so nothing was "
+            "changed. Details: {detail}"
+        ).format(detail=detail)
+
+    if isinstance(error, InvalidConfigDocumentError):
+        detail = error.detail or _("no further detail was reported")
+        return _(
+            "The configuration could not be prepared for saving, so nothing "
+            "was changed. Details: {detail}"
+        ).format(detail=detail)
+
+    if isinstance(error, ReloadFailedError):
+        detail = error.detail or _("no further detail was reported")
+        return _(
+            "Configuration saved, but the Hot Corners script could not be "
+            "reloaded automatically, so it is not certain your changes are "
+            "active yet. Details: {detail}. Try Apply again, or log out and "
+            "back in."
+        ).format(detail=detail)
+
+    return _("Saving the configuration failed. Nothing was changed.")
 
 
 def _read_config_baseline() -> ConfigBaseline:
@@ -141,17 +260,25 @@ def load_config() -> LoadedConfig:
 def save_config(
         config: dict | None,
         baseline: ConfigBaseline,
-) -> ConfigBaseline | None:
-    """Write v2 config only if its raw baseline is still current."""
+) -> ConfigBaseline:
+    """Write the config only if its raw baseline is still current.
+
+    Raises a specific ConfigSaveError subclass on failure so the caller can
+    tell a concurrent edit apart from a missing tool or a failed write.
+    """
     try:
         if isinstance(config, dict) and config.get("schemaVersion") == 3:
             normalized = normalize_config_to_v3(config)
         else:
             normalized = normalize_config_to_v2(config)
         payload = json.dumps(normalized, separators=(",", ":"))
+    except (ValueError, TypeError) as exc:
+        raise InvalidConfigDocumentError(str(exc)) from exc
+
+    try:
         current = _read_config_baseline()
-    except (ValueError, TypeError, FileNotFoundError):
-        return None
+    except FileNotFoundError as exc:
+        raise MissingToolError("kreadconfig6") from exc
 
     if current != baseline:
         raise StaleConfigError("MonitorConfigs changed since load")
@@ -162,18 +289,85 @@ def save_config(
              "--group", KWINRC_GROUP, "--key", CONFIG_KEY, payload],
             check=True,
         )
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
+    except FileNotFoundError as exc:
+        raise MissingToolError("kwriteconfig6") from exc
+    except subprocess.CalledProcessError as exc:
+        raise ConfigWriteError(
+            f"kwriteconfig6 exited with status {exc.returncode}") from exc
 
     updated_baseline = ConfigBaseline(True, payload)
-    try:
-        subprocess.run(
-            ["qdbus6", "org.kde.KWin", "/KWin", "reconfigure"],
-            check=False,
-        )
-    except FileNotFoundError:
-        pass
+    _reload_kwin_script(updated_baseline)
     return updated_baseline
+
+
+def _run_kwin_scripting_call(baseline: ConfigBaseline, *args: str):
+    """Run one qdbus6 call against org.kde.KWin, raising ReloadFailedError
+    on a missing qdbus6 binary rather than letting it propagate raw."""
+    try:
+        return subprocess.run(
+            ["qdbus6", "org.kde.KWin", *args],
+            check=False, capture_output=True, text=True,
+        )
+    except FileNotFoundError as exc:
+        raise ReloadFailedError(baseline, "qdbus6 not found") from exc
+
+
+def _reload_kwin_script(baseline: ConfigBaseline) -> None:
+    """Reload the installed Hot Corners KWin script via reconfigure ->
+    unloadScript -> loadScript -> Script.run.
+
+    Proven live on Plasma/KWin 6.7.3 Wayland: KWin keeps its own shared,
+    in-process cache of kwinrc, which an external kwriteconfig6 write does
+    not invalidate. A script reloaded via unloadScript/loadScript/run reads
+    that stale cache through readConfig() -- the freshly written value only
+    becomes visible after "qdbus6 org.kde.KWin /KWin reconfigure" forces
+    the cache to reparse from disk. Without this call first, a single Apply
+    writes the correct value but the reloaded script keeps observing the
+    pre-Apply configuration, which only became visible on an unrelated
+    later reload -- physically observed as needing a second Apply.
+
+    unloadScript is only called when the script is currently loaded; a
+    false/failed unload is only tolerated in that not-loaded case, never
+    when the script was known to be loaded.
+    """
+    reconfigure_result = _run_kwin_scripting_call(baseline, "/KWin", "reconfigure")
+    if reconfigure_result.returncode != 0:
+        raise ReloadFailedError(baseline, "reconfigure failed")
+
+    # See KWIN_RECONFIGURE_SETTLE_SECONDS: give KWin's shared kwinrc cache
+    # time to reparse before the script reload below re-executes readConfig().
+    time.sleep(KWIN_RECONFIGURE_SETTLE_SECONDS)
+
+    loaded_result = _run_kwin_scripting_call(
+        baseline, "/Scripting", "isScriptLoaded", KWIN_SCRIPT_PLUGIN_ID)
+    if loaded_result.returncode != 0:
+        raise ReloadFailedError(baseline, "isScriptLoaded failed")
+    was_loaded = loaded_result.stdout.strip() == "true"
+
+    if was_loaded:
+        unload_result = _run_kwin_scripting_call(
+            baseline, "/Scripting", "unloadScript", KWIN_SCRIPT_PLUGIN_ID)
+        if unload_result.returncode != 0 or unload_result.stdout.strip() != "true":
+            raise ReloadFailedError(baseline, "unloadScript failed")
+
+    load_result = _run_kwin_scripting_call(
+        baseline, "/Scripting", "loadScript",
+        KWIN_SCRIPT_INSTALLED_PATH, KWIN_SCRIPT_PLUGIN_ID)
+    if load_result.returncode != 0:
+        raise ReloadFailedError(baseline, "loadScript failed")
+    try:
+        script_id = int(load_result.stdout.strip())
+    except ValueError as exc:
+        raise ReloadFailedError(
+            baseline, "loadScript returned no script ID") from exc
+    if script_id < 0:
+        raise ReloadFailedError(
+            baseline, "loadScript returned an invalid script ID")
+
+    run_result = _run_kwin_scripting_call(
+        baseline, f"/Scripting/Script{script_id}", "org.kde.kwin.Script.run")
+    if run_result.returncode != 0:
+        raise ReloadFailedError(baseline, "Script.run failed")
 
 # -----------------------------------------------------------------------------
 # Action catalog
@@ -225,6 +419,7 @@ POSITION_IDS = [pid for (pid, _label) in POSITION_LAYOUT]
 # Mark for xgettext
 _("Top-left"); _("Top"); _("Top-right"); _("Left"); _("Right")
 _("Bottom-left"); _("Bottom"); _("Bottom-right")
+_("Top midpoint"); _("Right midpoint"); _("Bottom midpoint"); _("Left midpoint")
 _("Command"); _("Program"); _("Arguments")
 _("Add"); _("Edit"); _("Remove"); _("Move Up"); _("Move Down")
 _("Argument")
@@ -234,12 +429,10 @@ _("Command program cannot be empty.")
 _("Command program is invalid.")
 _("Command arguments are invalid.")
 _("Cooldown")
-_("Minimum time before this hot zone can trigger again.")
 _("Invalid cooldown value.")
 _("Tap")
 _("Linger")
 _("Linger delay")
-_("Time the cursor must stay before the linger action runs instead of the tap action.")
 _("Invalid linger delay value.")
 _("Context")
 _("Default")
@@ -250,8 +443,6 @@ _("Add Context")
 _("Edit Context")
 _("Remove Context")
 _("Inherit from Default")
-_("Activity ID")
-_("Desktop ID")
 _("A context with this identifier already exists.")
 _("The default context cannot be removed.")
 _("Remove this context?")
@@ -262,6 +453,38 @@ def position_label(pos_id: str) -> str:
         if pid == pos_id:
             return _(label)
     return pos_id
+
+
+ZONE_TOOLTIP_POSITION_LABELS = {
+    "TopLeft": "Top-left",
+    "Top": "Top midpoint",
+    "TopRight": "Top-right",
+    "Left": "Left midpoint",
+    "Right": "Right midpoint",
+    "BottomLeft": "Bottom-left",
+    "Bottom": "Bottom midpoint",
+    "BottomRight": "Bottom-right",
+}
+
+
+def zone_tooltip_position_label(pos_id: str) -> str:
+    """Corner labels stay bare ("Top-left"); edge midpoints are suffixed
+    ("Right midpoint") so the tooltip cannot be misread as a corner."""
+    return _(ZONE_TOOLTIP_POSITION_LABELS.get(pos_id, pos_id))
+
+
+def action_display_text(action: dict | None) -> str:
+    if not isinstance(action, dict):
+        return _("No action")
+    action_type = action.get("type", "none")
+    if action_type == "shortcut":
+        return action.get("name") or _("No action")
+    if action_type == "command":
+        program = action.get("program", "")
+        if program:
+            return _("Run: {program}").format(program=program)
+        return _("Run command")
+    return _("No action")
 
 
 def context_kind_label(kind: str) -> str:
@@ -587,9 +810,11 @@ def display_name(monitor: dict) -> str:
 # Context dialog — add/edit v3 context metadata
 # -----------------------------------------------------------------------------
 class ContextDialog(QDialog):
-    def __init__(self, parent=None, *, kind="activity", activity_id="", desktop_id=""):
+    def __init__(self, parent=None, *, kind="activity", activity_id="",
+                 desktop_id="", provider=None):
         super().__init__(parent)
         self.setWindowTitle(_("Context"))
+        self._provider = provider if provider is not None else DBusContextProvider()
         self._build_ui()
         self.set_context(kind, activity_id, desktop_id)
 
@@ -603,18 +828,36 @@ class ContextDialog(QDialog):
         self.kind_combo.addItem(_("Activity"), "activity")
         self.kind_combo.addItem(_("Desktop"), "desktop")
         self.kind_combo.addItem(_("Activity + Desktop"), "activityDesktop")
+        self.kind_combo.setToolTip(_(
+            "Choose what this context depends on. The binding you edit here "
+            "applies only while that activity and/or virtual desktop is current."
+        ))
         self.kind_combo.currentIndexChanged.connect(self._update_visibility)
         layout.addRow(_("Context"), self.kind_combo)
 
-        self.activity_id_edit = QLineEdit()
-        self.activity_id_edit.setPlaceholderText(_("Activity ID"))
-        layout.addRow(_("Activity ID"), self.activity_id_edit)
-        self.activity_id_label = layout.labelForField(self.activity_id_edit)
+        self.activity_combo = QComboBox()
+        self.activity_combo.setToolTip(_(
+            "The activity this context applies to. The name is shown; the "
+            "stable identifier KWin matches on is stored."
+        ))
+        layout.addRow(_("Activity"), self.activity_combo)
+        self.activity_label = layout.labelForField(self.activity_combo)
 
-        self.desktop_id_edit = QLineEdit()
-        self.desktop_id_edit.setPlaceholderText(_("Desktop ID"))
-        layout.addRow(_("Desktop ID"), self.desktop_id_edit)
-        self.desktop_id_label = layout.labelForField(self.desktop_id_edit)
+        self.desktop_combo = QComboBox()
+        self.desktop_combo.setToolTip(_(
+            "The virtual desktop this context applies to. The name is shown; "
+            "the stable identifier KWin matches on is stored."
+        ))
+        layout.addRow(_("Desktop"), self.desktop_combo)
+        self.desktop_label = layout.labelForField(self.desktop_combo)
+
+        self.refresh_button = QPushButton(_("Refresh list"))
+        self.refresh_button.setToolTip(_(
+            "Look up the current activities and virtual desktops again, for "
+            "example after creating or renaming one."
+        ))
+        self.refresh_button.clicked.connect(self.refresh_options)
+        layout.addRow("", self.refresh_button)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -623,31 +866,60 @@ class ContextDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
 
+    def _populate(self, combo, options, selected_id):
+        """Fill a combo with discovered options, keeping a stale saved id."""
+        combo.clear()
+        known = set()
+        for option in options:
+            label = option.name or option.identifier
+            combo.addItem(f"{label} ({option.identifier})", option.identifier)
+            known.add(option.identifier)
+
+        if selected_id and selected_id not in known:
+            # A saved identifier that no longer resolves stays selectable and
+            # is never silently dropped, so the stored context survives.
+            combo.addItem(
+                _("{identifier} — unavailable").format(identifier=selected_id),
+                selected_id,
+            )
+
+        if selected_id:
+            index = combo.findData(selected_id)
+            if index >= 0:
+                combo.setCurrentIndex(index)
+
+    def refresh_options(self):
+        """Re-query the provider, preserving the current selections."""
+        self._populate(
+            self.activity_combo, self._provider.activities(), self.activity_id())
+        self._populate(
+            self.desktop_combo, self._provider.desktops(), self.desktop_id())
+
     def _update_visibility(self):
         kind = self.kind_combo.currentData() or "activity"
         show_activity = kind in {"activity", "activityDesktop"}
         show_desktop = kind in {"desktop", "activityDesktop"}
-        self.activity_id_edit.setVisible(show_activity)
-        self.activity_id_label.setVisible(show_activity)
-        self.desktop_id_edit.setVisible(show_desktop)
-        self.desktop_id_label.setVisible(show_desktop)
+        self.activity_combo.setVisible(show_activity)
+        self.activity_label.setVisible(show_activity)
+        self.desktop_combo.setVisible(show_desktop)
+        self.desktop_label.setVisible(show_desktop)
 
     def set_context(self, kind: str, activity_id: str = "", desktop_id: str = ""):
         idx = self.kind_combo.findData(kind)
         if idx >= 0:
             self.kind_combo.setCurrentIndex(idx)
-        self.activity_id_edit.setText(activity_id or "")
-        self.desktop_id_edit.setText(desktop_id or "")
+        self._populate(self.activity_combo, self._provider.activities(), activity_id or "")
+        self._populate(self.desktop_combo, self._provider.desktops(), desktop_id or "")
         self._update_visibility()
 
     def context_kind(self):
         return self.kind_combo.currentData() or "activity"
 
     def activity_id(self):
-        return self.activity_id_edit.text()
+        return self.activity_combo.currentData() or ""
 
     def desktop_id(self):
-        return self.desktop_id_edit.text()
+        return self.desktop_combo.currentData() or ""
 
 # -----------------------------------------------------------------------------
 # Visual canvas: monitor arrangement with clickable handles
@@ -668,13 +940,31 @@ class MonitorCanvas(QWidget):
         self.config = config
         self.selected = None   # (monitor_name, position_id)
         self.hovered = None
+        self.tooltip_provider = None  # Callable[[str, str], str] | None
+        self._default_tooltip = ""
         self.setMouseTracking(True)
         self.setMinimumHeight(260)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
+    def set_default_tooltip(self, text: str):
+        """Tooltip shown while hovering the canvas but no handle. Use this
+        instead of setToolTip() directly, which per-handle hover overrides."""
+        self._default_tooltip = text
+        if not self.hovered:
+            self.setToolTip(text)
+
     def set_config(self, config: dict):
         self.config = config
         self.update()
+        self._refresh_hover_tooltip()
+
+    def _refresh_hover_tooltip(self):
+        """Re-derive the tooltip for whatever handle is currently hovered, so
+        an edit made without moving the mouse is reflected immediately."""
+        if self.hovered and self.tooltip_provider:
+            text = self.tooltip_provider(*self.hovered)
+            self.setToolTip(text)
+            QToolTip.showText(QCursor.pos(), text, self)
 
     def _bounding_box(self):
         if not self.monitors:
@@ -730,8 +1020,18 @@ class MonitorCanvas(QWidget):
     def _is_configured(self, monitor_name: str, pos_id: str) -> bool:
         mon = self.config.get("monitors", {}).get(monitor_name, {})
         binding = mon.get(pos_id, {})
-        action = binding.get("action", {})
-        return action.get("type", "none") != "none"
+        if not isinstance(binding, dict):
+            return False
+        if "action" in binding:
+            # v2 shape: a single action.
+            action = binding.get("action", {})
+            return isinstance(action, dict) and action.get("type", "none") != "none"
+        # v3 shape: tap and/or linger. Either one being a real action counts.
+        tap = binding.get("tap", {})
+        linger = binding.get("linger", {})
+        tap_set = isinstance(tap, dict) and tap.get("type", "none") != "none"
+        linger_set = isinstance(linger, dict) and linger.get("type", "none") != "none"
+        return tap_set or linger_set
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -838,12 +1138,17 @@ class MonitorCanvas(QWidget):
                 Qt.CursorShape.PointingHandCursor if hit
                 else Qt.CursorShape.ArrowCursor
             )
+            if hit and self.tooltip_provider:
+                self.setToolTip(self.tooltip_provider(*hit))
+            else:
+                self.setToolTip(self._default_tooltip)
             self.update()
 
     def leaveEvent(self, event):
         if self.hovered is not None:
             self.hovered = None
             self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.setToolTip(self._default_tooltip)
             self.update()
 
     def select(self, monitor_name, pos_id):
@@ -865,9 +1170,10 @@ class ActionEditor(QWidget):
 
     actionChanged = pyqtSignal(dict)
 
-    def __init__(self, action: dict, parent=None):
+    def __init__(self, action: dict, parent=None, *, role="tap"):
         super().__init__(parent)
         self._suppress_signals = False
+        self._role = role
         self._draft_actions = {
             "none": dict(NONE_ACTION),
             "shortcut": dict(DEFAULT_SHORTCUT_ACTION),
@@ -876,6 +1182,26 @@ class ActionEditor(QWidget):
         self.action = dict(NONE_ACTION)
         self._build_ui()
         self.set_action(action)
+
+    def _type_combo_tooltip(self):
+        if self._role == "linger":
+            when = _(
+                "Runs the action after the cursor has stayed in this hot zone "
+                "for the linger delay."
+            )
+        else:
+            when = _(
+                "Runs the action as soon as the cursor reaches this hot zone, "
+                "or on a short touch when a linger action is also set."
+            )
+        return "{when}\n\n{choices}".format(
+            when=when,
+            choices=_(
+                "No action: nothing happens.\n"
+                "Trigger shortcut: invokes a KDE global shortcut.\n"
+                "Command: runs a program directly, without a shell."
+            ),
+        )
 
     def _build_ui(self):
         layout = QFormLayout(self)
@@ -887,6 +1213,7 @@ class ActionEditor(QWidget):
         self.type_combo.addItem(_("No action"), "none")
         self.type_combo.addItem(_("Trigger shortcut"), "shortcut")
         self.type_combo.addItem(_("Command"), "command")
+        self.type_combo.setToolTip(self._type_combo_tooltip())
         self.type_combo.currentIndexChanged.connect(self._on_type_changed)
         layout.addRow(_("Action:"), self.type_combo)
 
@@ -894,29 +1221,51 @@ class ActionEditor(QWidget):
         for comp, name, label in builtin_shortcuts():
             self.shortcut_combo.addItem(label, (comp, name))
         self.shortcut_combo.addItem(_("Custom shortcut…"), ("__custom__", ""))
+        self.shortcut_combo.setToolTip(_(
+            "The KDE global shortcut to invoke. Choose \"Custom shortcut…\" to "
+            "enter one that is not in this list."
+        ))
         self.shortcut_combo.currentIndexChanged.connect(self._on_shortcut_changed)
         layout.addRow(_("Shortcut:"), self.shortcut_combo)
         self._shortcut_row_label = layout.labelForField(self.shortcut_combo)
 
         self.custom_component = QLineEdit()
         self.custom_component.setPlaceholderText(_("e.g. kwin"))
+        self.custom_component.setToolTip(_(
+            "The kglobalaccel component that owns the shortcut, such as kwin "
+            "for window management or ksmserver for session actions."
+        ))
         self.custom_component.textChanged.connect(self._on_custom_changed)
         layout.addRow(_("Component:"), self.custom_component)
         self._component_row_label = layout.labelForField(self.custom_component)
 
         self.custom_name = QLineEdit()
         self.custom_name.setPlaceholderText(_("e.g. Overview"))
+        self.custom_name.setToolTip(_(
+            "The exact shortcut name within that component. It must match how "
+            "KDE registered it, including spelling and spaces."
+        ))
         self.custom_name.textChanged.connect(self._on_custom_changed)
         layout.addRow(_("Shortcut name:"), self.custom_name)
         self._name_row_label = layout.labelForField(self.custom_name)
 
         self.command_program = QLineEdit()
+        self.command_program.setToolTip(_(
+            "The program to run. Give a full path, or a bare name to be found "
+            "on PATH. It is executed directly, without a shell, so pipes, "
+            "redirections and variables are not interpreted."
+        ))
         self.command_program.textChanged.connect(self._on_command_changed)
         layout.addRow(_("Program"), self.command_program)
         self._command_program_label = layout.labelForField(self.command_program)
 
         self.command_arguments = QListWidget()
         self.command_arguments.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self.command_arguments.setToolTip(_(
+            "Arguments passed to the program, one entry per argument, in this "
+            "order. Because no shell is involved, each entry is passed through "
+            "literally: do not quote them, and spaces do not split an entry."
+        ))
         layout.addRow(_("Arguments"), self.command_arguments)
         self._command_arguments_label = layout.labelForField(self.command_arguments)
 
@@ -930,6 +1279,12 @@ class ActionEditor(QWidget):
         self.arg_remove_btn = QPushButton(_("Remove"))
         self.arg_up_btn = QPushButton(_("Move Up"))
         self.arg_down_btn = QPushButton(_("Move Down"))
+
+        self.arg_add_btn.setToolTip(_("Add one argument to the end of the list."))
+        self.arg_edit_btn.setToolTip(_("Change the selected argument."))
+        self.arg_remove_btn.setToolTip(_("Delete the selected argument."))
+        self.arg_up_btn.setToolTip(_("Move the selected argument one place earlier."))
+        self.arg_down_btn.setToolTip(_("Move the selected argument one place later."))
 
         self.arg_add_btn.clicked.connect(self._on_add_argument)
         self.arg_edit_btn.clicked.connect(self._on_edit_argument)
@@ -1252,7 +1607,14 @@ class MainWindow(QMainWindow):
         canvas_header.setStyleSheet("font-weight: bold;")
         body_layout.addWidget(canvas_header)
 
-        self.canvas = MonitorCanvas(self.monitors, self.config)
+        self.canvas = MonitorCanvas(self.monitors, self._canvas_config())
+        self.canvas.set_default_tooltip(_(
+            "Your monitors, arranged as they are on your desk. Click one of "
+            "the eight handles on a monitor — four corners and four edge "
+            "midpoints — to choose which hot zone to configure. Filled "
+            "handles already have an action."
+        ))
+        self.canvas.tooltip_provider = self._zone_tooltip_text
         self.canvas.cornerSelected.connect(self._on_corner_selected)
         body_layout.addWidget(self.canvas, 2)
 
@@ -1264,12 +1626,29 @@ class MainWindow(QMainWindow):
         if self.is_v3:
             context_row = QHBoxLayout()
             self.context_combo = QComboBox()
+            self.context_combo.setToolTip(_(
+                "Which situation you are editing bindings for. \"Default\" "
+                "applies whenever no more specific context matches; the others "
+                "apply only in their own activity and/or virtual desktop."
+            ))
             self.context_combo.currentIndexChanged.connect(self._on_context_combo_changed)
             context_row.addWidget(self.context_combo, 1)
 
             self.add_context_btn = QPushButton(_("Add Context"))
             self.edit_context_btn = QPushButton(_("Edit Context"))
             self.remove_context_btn = QPushButton(_("Remove Context"))
+            self.add_context_btn.setToolTip(_(
+                "Create a context for a specific activity, virtual desktop, or "
+                "both, so this monitor's hot zones can behave differently there."
+            ))
+            self.edit_context_btn.setToolTip(_(
+                "Change which activity or virtual desktop the selected context "
+                "applies to. The Default context cannot be changed."
+            ))
+            self.remove_context_btn.setToolTip(_(
+                "Delete the selected context and all bindings in it. Those hot "
+                "zones then fall back to the Default context."
+            ))
             self.add_context_btn.clicked.connect(self._on_add_context)
             self.edit_context_btn.clicked.connect(self._on_edit_context)
             self.remove_context_btn.clicked.connect(self._on_remove_context)
@@ -1278,7 +1657,26 @@ class MainWindow(QMainWindow):
             context_row.addWidget(self.remove_context_btn)
             editor_layout.addLayout(context_row)
 
+            self.context_help_label = QLabel(_(
+                "When a hot zone triggers, the most specific matching context "
+                "wins: activity + desktop, then activity, then desktop, then "
+                "Default."
+            ))
+            self.context_help_label.setWordWrap(True)
+            self.context_help_label.setStyleSheet(
+                "color: palette(mid); font-size: 10pt;")
+            editor_layout.addWidget(self.context_help_label)
+
             self.binding_state_combo = QComboBox()
+            self.binding_state_combo.setToolTip(_(
+                "Whether this hot zone has its own binding in this context.\n\n"
+                "Inherit from Default: no binding here, so the Default "
+                "context's binding is used.\n"
+                "Set here: this context overrides Default.\n\n"
+                "To make a hot zone deliberately do nothing in this context, "
+                "set it here with the action \"No action\" — that blocks the "
+                "fallback instead of inheriting."
+            ))
             self.binding_state_combo.currentIndexChanged.connect(self._on_binding_state_changed)
             editor_layout.addWidget(self.binding_state_combo)
         else:
@@ -1287,6 +1685,7 @@ class MainWindow(QMainWindow):
             self.edit_context_btn = None
             self.remove_context_btn = None
             self.binding_state_combo = None
+            self.context_help_label = None
 
         if self.is_v3:
             tap_group = QGroupBox(_("Tap"))
@@ -1298,7 +1697,7 @@ class MainWindow(QMainWindow):
 
             linger_group = QGroupBox(_("Linger"))
             linger_layout = QVBoxLayout(linger_group)
-            self.linger_action_editor = ActionEditor(dict(NONE_ACTION))
+            self.linger_action_editor = ActionEditor(dict(NONE_ACTION), role="linger")
             self.linger_action_editor.actionChanged.connect(self._on_linger_action_changed)
             linger_layout.addWidget(self.linger_action_editor)
 
@@ -1310,7 +1709,13 @@ class MainWindow(QMainWindow):
             self.linger_delay_spin.setSingleStep(50)
             self.linger_delay_spin.setSuffix(" ms")
             self.linger_delay_spin.setToolTip(_(
-                "Time the cursor must stay before the linger action runs instead of the tap action."
+                "How long the cursor must stay in the hot zone before the "
+                "linger action runs instead of the tap action. "
+                "{minimum}–{maximum} ms; {default} ms by default."
+            ).format(
+                minimum=MIN_LINGER_MS,
+                maximum=MAX_LINGER_MS,
+                default=DEFAULT_LINGER_MS,
             ))
             self.linger_delay_spin.valueChanged.connect(self._on_linger_delay_changed)
             linger_delay_row.addWidget(linger_delay_label)
@@ -1335,7 +1740,11 @@ class MainWindow(QMainWindow):
         self.cooldown_spin.setMaximum(MAX_COOLDOWN_MS)
         self.cooldown_spin.setSingleStep(50)
         self.cooldown_spin.setSuffix(" ms")
-        self.cooldown_spin.setToolTip(_("Minimum time before this hot zone can trigger again."))
+        self.cooldown_spin.setToolTip(_(
+            "Minimum time before this hot zone can trigger again, to stop one "
+            "sweep of the cursor from firing repeatedly. 0–{maximum} ms; 0 "
+            "disables the cooldown."
+        ).format(maximum=MAX_COOLDOWN_MS))
         self.cooldown_spin.valueChanged.connect(self._on_cooldown_changed)
         cooldown_row.addWidget(cooldown_label)
         cooldown_row.addWidget(self.cooldown_spin)
@@ -1360,21 +1769,181 @@ class MainWindow(QMainWindow):
         bl = QHBoxLayout(button_wrap)
 
         buttons = QDialogButtonBox()
+        if self.is_v3:
+            self.upgrade_button = None
+        else:
+            # Only offered for a legacy document, and only ever applied after
+            # explicit confirmation -- opening the GUI never upgrades.
+            self.upgrade_button = buttons.addButton(
+                _("Enable tap/linger and contexts…"),
+                QDialogButtonBox.ButtonRole.ActionRole,
+            )
+            self.upgrade_button.setToolTip(_(
+                "Upgrade this configuration so each hot zone can have a "
+                "separate tap and linger action, and so bindings can differ "
+                "per activity and virtual desktop. Your existing actions and "
+                "cooldowns are kept exactly as they are."
+            ))
+            self.upgrade_button.clicked.connect(self._on_upgrade_to_v3)
+        self.help_btn = buttons.addButton(
+            _("Help"), QDialogButtonBox.ButtonRole.HelpRole
+        )
+        self.help_btn.setToolTip(_(
+            "Explain hot zones, actions, cooldown, tap and linger, and contexts."
+        ))
         self.reset_btn = buttons.addButton(
             _("Reload from disk"), QDialogButtonBox.ButtonRole.ResetRole
         )
+        self.reset_btn.setToolTip(_(
+            "Discard unsaved changes and read the configuration from kwinrc "
+            "again. Use this if another program changed the configuration "
+            "while this window was open."
+        ))
         self.close_btn = buttons.addButton(
             _("Close"), QDialogButtonBox.ButtonRole.RejectRole
         )
+        self.close_btn.setToolTip(_("Close this window. Unsaved changes are discarded."))
         self.apply_btn = buttons.addButton(
             _("Apply"), QDialogButtonBox.ButtonRole.ApplyRole
         )
+        self.apply_btn.setToolTip(_(
+            "Save the configuration to kwinrc and reload the KWin script so "
+            "the changes take effect. Nothing is written until you do this."
+        ))
         self.apply_btn.clicked.connect(self._on_apply)
         self.reset_btn.clicked.connect(self._on_reset)
         self.close_btn.clicked.connect(self.close)
+        self.help_btn.clicked.connect(self._on_help)
 
         bl.addWidget(buttons)
         outer.addWidget(button_wrap)
+
+    def help_text(self):
+        """Longer explanations that do not fit in a tooltip."""
+        return _(
+            "<h3>Hot zones</h3>"
+            "<p>Every monitor has eight hot zones: its four corners and the "
+            "midpoint of its four edges. Each one is configured separately, so "
+            "the corners where two monitors meet can be left empty while the "
+            "outer corners stay useful.</p>"
+
+            "<h3>Actions</h3>"
+            "<p><b>No action</b> means pushing the cursor there does nothing. "
+            "<b>Trigger shortcut</b> invokes a KDE global shortcut, such as "
+            "Overview. <b>Command</b> runs a program directly.</p>"
+            "<p>Commands are run <b>without a shell</b>. The program is "
+            "executed as given and each argument is passed through literally, "
+            "so pipes, redirections, wildcards and variables are not "
+            "interpreted. To use shell features, run a shell explicitly, for "
+            "example the program <code>/bin/sh</code> with the arguments "
+            "<code>-c</code> and your command line.</p>"
+
+            "<h3>Cooldown</h3>"
+            "<p>After a hot zone fires, it ignores further triggers until the "
+            "cooldown has passed. This stops a single sweep of the cursor from "
+            "firing an action several times. Set it to 0 to disable it.</p>"
+
+            "<h3>Tap and linger</h3>"
+            "<p>A hot zone can do two different things. The <b>tap</b> action "
+            "runs on a short touch. If a <b>linger</b> action is set, holding "
+            "the cursor in the zone for the linger delay runs that instead. "
+            "Only one of the two ever runs per visit. With no linger action, "
+            "the tap action runs immediately.</p>"
+
+            "<h3>Contexts</h3>"
+            "<p>Bindings can differ per activity and per virtual desktop. When "
+            "a hot zone triggers, the most specific matching context wins:</p>"
+            "<p><b>activity + desktop → activity → desktop → Default</b></p>"
+            "<p>A hot zone with no binding in the current context falls back "
+            "to the next one, and finally to <b>Default</b>. To make a hot "
+            "zone deliberately do nothing in one context, give it the action "
+            "\"No action\" there: that blocks the fallback, which is different "
+            "from leaving it unset.</p>"
+            "<p>Contexts are matched on KDE's internal identifiers, so pick "
+            "activities and desktops from the lists rather than typing names. "
+            "An entry marked <i>unavailable</i> refers to an activity or "
+            "desktop that no longer exists; it is kept, not deleted, so "
+            "nothing is lost if it comes back.</p>"
+
+            "<h3>Applying changes</h3>"
+            "<p>Nothing is written until you choose Apply. If another program "
+            "changes the configuration while this window is open, Apply is "
+            "refused rather than overwriting it — use Reload from disk and "
+            "redo your change.</p>"
+        )
+
+    def _on_help(self):
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle(_("Hot Corners Per Monitor — Help"))
+        dialog.setTextFormat(Qt.TextFormat.RichText)
+        dialog.setText(self.help_text())
+        dialog.setStandardButtons(QMessageBox.StandardButton.Close)
+        dialog.exec()
+
+    def _on_upgrade_to_v3(self):
+        if self.is_v3 or not self.config_valid:
+            return
+
+        answer = QMessageBox.question(
+            self,
+            _("Enable tap/linger and contexts?"),
+            _(
+                "This upgrades your configuration so that each hot zone can "
+                "have a separate tap action and linger action, and so that "
+                "bindings can differ per activity and per virtual desktop.\n\n"
+                "What is kept: every action you have configured, and every "
+                "cooldown value, exactly as they are. They become the "
+                "\"Default\" context, which applies whenever no more specific "
+                "context matches.\n\n"
+                "What changes: the configuration is stored in a newer format. "
+                "Nothing is written until you choose Apply, and older versions "
+                "of this tool will not read the new format.\n\n"
+                "Continue?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            upgraded = migrate_config_v2_to_v3(self.config)
+        except InvalidConfig as error:
+            QMessageBox.critical(
+                self, _("Upgrade failed"),
+                _(
+                    "The configuration could not be upgraded, so nothing was "
+                    "changed. Details: {detail}"
+                ).format(detail=str(error)),
+            )
+            return
+
+        selection = self.current_selection
+        self.config = upgraded
+        self.is_v3 = True
+        self.active_context_key = "default"
+        self._local_binding_drafts = {}
+        self._rebuild_editor()
+
+        if selection:
+            self.canvas.select(*selection)
+            self._on_corner_selected(*selection)
+        elif self.monitors:
+            self.canvas.select_first()
+
+    def _rebuild_editor(self):
+        """Rebuild the editor after the document's schema version changed."""
+        self._suppress_binding_signals = True
+        self._suppress_context_signals = True
+        try:
+            self._build_ui()
+        finally:
+            self._suppress_binding_signals = False
+            self._suppress_context_signals = False
+
+        if self.is_v3:
+            self._refresh_context_selector()
+            self._select_context(self.active_context_key, reload_binding=False)
 
     def _canvas_config(self):
         if not self.is_v3:
@@ -1386,6 +1955,41 @@ class MainWindow(QMainWindow):
             if not isinstance(monitors, dict):
                 monitors = {}
         return {"monitors": monitors}
+
+    def _zone_tooltip_text(self, monitor_name: str, position_id: str) -> str:
+        """Hover text for one hot-zone handle: monitor, zone, and the action
+        that actually applies in the GUI-selected context right now."""
+        position_text = zone_tooltip_position_label(position_id)
+
+        if not self.is_v3:
+            binding = self.config.get("monitors", {}).get(monitor_name, {})
+            action = binding.get(position_id, {}).get("action") if isinstance(binding, dict) else None
+            return _("{monitor} — {position}: {action}").format(
+                monitor=monitor_name, position=position_text,
+                action=action_display_text(action),
+            )
+
+        own = get_context_binding(self.config, self.active_context_key, monitor_name, position_id)
+        own_tap = own.get("tap") if isinstance(own, dict) else None
+        if isinstance(own_tap, dict) and own_tap.get("type") in {"none", "shortcut", "command"}:
+            return _("{monitor} — {position}: {action}").format(
+                monitor=monitor_name, position=position_text,
+                action=action_display_text(own_tap),
+            )
+
+        if self.active_context_key != "default":
+            fallback = get_default_v3_binding(self.config, monitor_name, position_id)
+            fallback_tap = fallback.get("tap") if isinstance(fallback, dict) else None
+            if isinstance(fallback_tap, dict) and fallback_tap.get("type") in {"none", "shortcut", "command"}:
+                return _("{monitor} — {position}: {action} (inherited from Default)").format(
+                    monitor=monitor_name, position=position_text,
+                    action=action_display_text(fallback_tap),
+                )
+
+        return _("{monitor} — {position}: {action}").format(
+            monitor=monitor_name, position=position_text,
+            action=action_display_text(None),
+        )
 
     def _refresh_context_selector(self):
         if not self.is_v3:
@@ -1944,21 +2548,27 @@ class MainWindow(QMainWindow):
 
         try:
             updated_baseline = save_config(config, self.config_baseline)
-        except StaleConfigError:
-            updated_baseline = None
-        if updated_baseline is not None:
-            self.config_baseline = updated_baseline
-            QMessageBox.information(
-                self, _("Saved"),
-                _("Configuration saved. KWin has been reloaded — "
-                  "your changes are active now.")
+        except ReloadFailedError as error:
+            # The write itself succeeded: adopt the new baseline so the next
+            # save is compared against what is actually on disk, but do not
+            # claim the change is active since the reload was not confirmed.
+            self.config_baseline = error.baseline
+            QMessageBox.warning(
+                self, _("Reload uncertain"), describe_save_error(error),
             )
-        else:
+            return
+        except ConfigSaveError as error:
             QMessageBox.critical(
-                self, _("Save failed"),
-                _("Could not write the configuration. Check that "
-                  "kwriteconfig6 is available on your system.")
+                self, _("Save failed"), describe_save_error(error),
             )
+            return
+
+        self.config_baseline = updated_baseline
+        QMessageBox.information(
+            self, _("Saved"),
+            _("Configuration saved. The Hot Corners script was reloaded — "
+              "your changes are active now.")
+        )
 
     def _on_reset(self):
         loaded_config = load_config()

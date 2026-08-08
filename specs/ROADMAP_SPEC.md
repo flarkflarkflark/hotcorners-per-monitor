@@ -10,19 +10,26 @@ Primary users are Plasma 6.4+ users who need different hot-corner and edge behav
 
 ### v0.2.0
 
+Product decision (2026-08-05): v0.2.0 absorbs what this document originally
+scoped as a separate v0.3.0 (tap/linger and contexts), because both were
+implemented and merged together before the original v0.2.0 gates/tag were
+completed. French, Spanish and Italian translations are explicitly deferred
+out of v0.2.0 — see "Deferred" below; they remain planned, not dropped.
+
 - Add a `command` action containing one executable and an argument list.
 - Never invoke an implicit shell; shell behavior requires an explicit executable such as `sh` with `-c` in its arguments.
 - Add a configurable cooldown to each monitor-position binding to suppress rapid repeated activation.
-- Add complete French, Spanish and Italian translations, including desktop metadata.
 - Preserve existing v0.1 shortcut configurations through automatic migration/normalization.
-
-### v0.3.0
-
 - Add tap-versus-linger bindings: leaving before a configurable threshold runs the tap action; remaining until the threshold runs the linger action.
 - Preserve immediate execution for bindings that have no linger action.
 - Add default, per-activity, per-virtual-desktop and combined activity-plus-desktop contexts.
 - Resolve contexts by stable activity and virtual-desktop IDs, while displaying human-readable names.
 - Context precedence: activity+desktop, activity, desktop, default.
+
+#### Deferred (not v0.2.0 scope)
+
+- Complete French, Spanish and Italian translations, including desktop metadata.
+- GUI activity/desktop discovery (activities/desktops are entered as free text in v0.2.0).
 
 ### v0.4.0+
 
@@ -65,8 +72,13 @@ Normative interface:
 bus:       org.flark.HotCorners.CommandRunner
 object:    /CommandRunner
 interface: org.flark.HotCorners.CommandRunner1
-method:    Run(string program, string argumentsJson) -> (bool accepted, string errorName)
+method:    Run(string program, string argumentsJson) -> [bool accepted, string errorName]
+wire:      in "ss", out "av" (QVariantList: accepted, then errorName)
 ```
+
+The reply is a two-element `QVariantList`, which introspects as `av` rather
+than a `(bs)` struct. Callers must therefore tolerate the values arriving
+variant-wrapped, and must not assume a fixed-arity struct.
 
 - `argumentsJson` must decode to at most 128 string arguments, each at most 16 KiB and at most 128 KiB total.
 - `program` is non-empty, contains no NUL, and is at most 4096 bytes. Absolute paths are used directly; bare names are resolved using the helper's `PATH`.
@@ -76,6 +88,7 @@ method:    Run(string program, string argumentsJson) -> (bool accepted, string e
 - The service exits after 30 seconds idle and may be activated again by D-Bus.
 - Session bus scope is transport, not authorization: any same-user process can call it, but that user can already execute processes. The helper never elevates privileges.
 - The KWin callback logs only the error name when activation or launch fails.
+- KWin's `callDBus()` is always asynchronous: it returns nothing and passes the reply values to an optional callback supplied as its last argument. The runtime must therefore collect the outcome in that callback. Treating the return value as the reply reports every call — including successful ones — as `invalid-helper-response`.
 
 ## Configuration Compatibility
 
@@ -96,7 +109,7 @@ method:    Run(string program, string argumentsJson) -> (bool accepted, string e
 
 ## Commands
 
-Current repository has no automated build/test entry points. The first implementation task establishes these intended commands:
+`tests/run-tests.sh` runs the current Python and JavaScript suites (268 Python tests passed, 2 skipped; 192 JavaScript tests, as of this writing). The CMake/CTest commands below apply from v0.4 onward, once the `kcm/` scaffold exists:
 
 ```bash
 ./tests/run-tests.sh                 # all Python and JavaScript tests
@@ -115,11 +128,10 @@ Manual runtime checks use `journalctl --user`/the KWin journal, `kcmshell6`, `qd
 ```text
 kwin-script/                 KWin runtime backend
 config-gui/                  PyQt6 configurator (v0.1–v0.3 compatibility UI)
-command-runner/              Session-D-Bus process helper introduced in v0.2
+command-runner/              Session-D-Bus process helper and activation metadata introduced in v0.2
 tests/python/                schema, GUI-model and command-runner tests
 tests/js/                    KWin backend tests with mocked KWin globals
 kcm/                         native C++/QML KCM introduced in v0.4
-dbus/                        D-Bus interface and activation metadata
 specs/                       architecture, impact and roadmap documents
 tasks/                       implementation plan and checklist
 ```
@@ -158,7 +170,9 @@ No framework, abstraction or dependency is added before a roadmap requirement ne
 - Keep Plasma-owned files untouched.
 - Block Apply when configuration is malformed, unsupported or stale.
 - Install and remove files through component manifests; preserve pre-existing unrelated files.
-- Trigger a KWin reconfigure after every successful GUI or KCM Apply.
+- Reload the Hot Corners KWin script after every successful GUI or KCM
+  Apply, using a mechanism proven live to actually reload it (a plain KWin
+  reconfigure was proven not to; see `tasks/todo.md`).
 
 ### Ask first
 
@@ -188,10 +202,19 @@ No framework, abstraction or dependency is added before a roadmap requirement ne
 - KCM-only removal leaves the backend and user configuration intact.
 - The full automated suite and required manual gates pass on Wayland and X11 before release.
 
-## Open Review Points
+## Review Points (resolved)
 
-- Confirm or adjust the proposed 350 ms cooldown default.
-- Confirm or adjust the proposed 500 ms linger default.
-- Confirm the context precedence and per-binding inheritance rules.
-- Confirm or adjust the proposed 8-logical-pixel linger stay zone.
-- Determine the Plasma 6.4 and X11 test environments before implementation reaches their release gates.
+Explicit human sign-off recorded 2026-08-07 (see `tasks/todo.md`) on all
+previously-open defaults and semantics:
+
+- 350 ms cooldown default — confirmed.
+- 500 ms linger default — confirmed.
+- Context precedence and per-binding inheritance rules (activity+desktop →
+  activity → desktop → default; explicit `None` blocks fallback) — confirmed.
+- 8-logical-pixel linger stay zone — confirmed.
+- Direct/no-implicit-shell command execution — confirmed.
+
+Plasma 6.4 Wayland and X11 test environments recorded QTimer-capability and
+tap/linger-timing gate results (`specs/spikes/results/`); the full v0.2.0
+feature set was additionally validated live on Plasma/KWin 6.7.3 Wayland and
+6.7.4 X11 (see `CHANGELOG.md`).
