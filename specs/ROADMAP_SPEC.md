@@ -29,7 +29,6 @@ out of v0.2.0 — see "Deferred" below; they remain planned, not dropped.
 #### Deferred (not v0.2.0 scope)
 
 - Complete French, Spanish and Italian translations, including desktop metadata.
-- GUI activity/desktop discovery (activities/desktops are entered as free text in v0.2.0).
 
 ### v0.4.0+
 

@@ -46,7 +46,7 @@ from config_schema import (
 )
 from PyQt6.QtCore import Qt, QSize, QRect, pyqtSignal
 from PyQt6.QtGui import (
-    QCursor, QGuiApplication, QPainter, QPen, QBrush, QColor, QPalette, QFont,
+    QCursor, QGuiApplication, QIcon, QPainter, QPen, QBrush, QColor, QPalette, QFont,
 )
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
@@ -933,6 +933,12 @@ class MonitorCanvas(QWidget):
     HANDLE_SIZE = 22  # px in widget space
     PADDING = 32
     MIN_MONITOR_LABEL_PT = 8
+    # Must exceed HANDLE_SIZE for two facing handles centered on a shrunk
+    # shared boundary to actually clear each other -- GUTTER is the distance
+    # between handle *centers*, not between monitor edges, so GUTTER <=
+    # HANDLE_SIZE would still let two HANDLE_SIZE-wide squares overlap.
+    GUTTER = 32  # px in widget space; presentation-only gap between adjacent monitors
+    HIT_PADDING = 3  # px each side; hit-test-only enlargement beyond the drawn handle
 
     def __init__(self, monitors, config, parent=None):
         super().__init__(parent)
@@ -998,8 +1004,17 @@ class MonitorCanvas(QWidget):
         return QRect(int(gx * s + ox), int(gy * s + oy),
                      int(gw * s), int(gh * s))
 
+    def _display_rect(self, monitor) -> QRect:
+        """Presentation-only inset of _monitor_rect(): shrinks every monitor
+        rect inward by half the gutter on each side, so two monitors that
+        are flush in real geometry end up GUTTER px apart on screen. Real
+        geometry, scale and output ownership are untouched -- only what
+        gets drawn/hit-tested here changes."""
+        g = self.GUTTER // 2
+        return self._monitor_rect(monitor).adjusted(g, g, -g, -g)
+
     def _handle_rects(self, monitor) -> dict:
-        r = self._monitor_rect(monitor)
+        r = self._display_rect(monitor)
         s = self.HANDLE_SIZE
         h = s // 2
         x = r.x(); y = r.y()
@@ -1047,7 +1062,7 @@ class MonitorCanvas(QWidget):
 
         # Draw each monitor + handles
         for monitor in self.monitors:
-            rect = self._monitor_rect(monitor)
+            rect = self._display_rect(monitor)
 
             # Monitor body
             painter.setPen(QPen(mid_col, 2))
@@ -1113,9 +1128,19 @@ class MonitorCanvas(QWidget):
                 painter.setBrush(QBrush(fill))
                 painter.drawRoundedRect(h_rect, 4, 4)
 
+    def _hit_rects(self, monitor) -> dict:
+        """Same positions as _handle_rects(), each enlarged by HIT_PADDING on
+        every side. Used only for hit-testing, so imprecise clicks near a
+        handle still register without visually growing the drawn handle."""
+        p = self.HIT_PADDING
+        return {
+            pos_id: rect.adjusted(-p, -p, p, p)
+            for pos_id, rect in self._handle_rects(monitor).items()
+        }
+
     def _hit_test(self, pos):
         for monitor in self.monitors:
-            handles = self._handle_rects(monitor)
+            handles = self._hit_rects(monitor)
             for pos_id, rect in handles.items():
                 if rect.contains(pos):
                     return (monitor["name"], pos_id)
@@ -2597,9 +2622,19 @@ class MainWindow(QMainWindow):
 
 
 def main():
+    # Must be set before QApplication is constructed to take full effect --
+    # this is what lets Plasma associate the running window with its
+    # installed .desktop file (hotcorners-config.desktop): Wayland app_id
+    # matching for the Task Manager/Alt+Tab, and desktop-file-based lookup
+    # generally. APP_DOMAIN already equals the installed desktop file's
+    # basename (see gettext setup above).
+    QGuiApplication.setDesktopFileName(APP_DOMAIN)
     app = QApplication(sys.argv)
     app.setApplicationName("hotcorners-config")
     app.setOrganizationName("flarkAUDIO")
+    # Explicit fallback so the window/titlebar icon is correct even if
+    # app_id/desktop-file matching doesn't resolve on a given platform.
+    app.setWindowIcon(QIcon.fromTheme("hotcorners-per-monitor"))
     window = MainWindow()
     window.show()
     return app.exec()

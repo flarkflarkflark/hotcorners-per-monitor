@@ -194,7 +194,22 @@ Activity/Desktop discovery are explicitly out of v0.2.0 scope — see
       was preserved, GUI discovery correctly dropped then restored the
       output, and no duplicate outputs or script objects appeared across
       the cycle. A literal physical cable hot-unplug was not performed.
-- [ ] Prepare and create the `v0.2.0` tag, and publish the release, now that the gates above pass.
+- [x] Prepare and create the `v0.2.0` tag, and publish the release, now that the gates above pass. Tagged and released; see `CHANGELOG.md`.
+
+## v0.2.1 (KDE Store readiness)
+
+Packaging-only release; no application behavior changes. See `CHANGELOG.md` for the full entry.
+
+- [x] Add KDE Store-compatible `KPlugin.Icon` metadata (`preferences-desktop-gestures-screenedges`), since KPackage has no mechanism for a package-local icon and a Store-only install never runs `setup.sh`.
+- [x] Add a deterministic KDE Store package builder (`tools/build-kde-store-package.sh`) with dirty-tree/tag checks, symlink rejection, validation, and an isolated `kpackagetool6` install/upgrade/remove self-test.
+- [x] Add `docs/KDE_STORE.md` documenting the Store-only vs. full-install distinction; update `README.md` to link it.
+- [x] Remove two stale, unused v0.1.0-era packaging templates never read by `setup.sh`/`uninstall.sh`, with a regression test guarding against recurrence.
+- [x] Tag and publish `v0.2.1` on GitHub.
+- [x] Run the physical Wayland KDE Store upgrade gate (Plasma/KWin 6.7.3) over the existing full install: enabled state, `main.js`/`main.xml` unchanged, icon renders, no Configure button, corner trigger, cooldown, full-install artifacts byte-identical, `MonitorConfigs` rollback verified.
+- [x] Run the physical X11 KDE Store upgrade gate (Plasma/KWin 6.7.4), including a software output disable/re-enable cycle proving edge-registration auto-recovery.
+- [x] Run a true fresh Store-only install gate on an isolated Fedora 43 KDE Plasma/KWin 6.4.5 Wayland VM (clean-snapshot profile): first install, default disabled state, KWin Scripts entry/icon, no Configure button, inert unconfigured behavior, shortcut runtime, missing-command-runner clean-failure path, uninstall, reinstall, KConfig retention behavior.
+- [x] Publish the KDE Store/OpenDesktop listing: https://www.opendesktop.org/p/2368107/
+- [x] Update `README.md` to present the KDE Store and full GitHub install as two documented tiers.
 
 ## Future work (post-v0.2.0)
 

@@ -1,5 +1,11 @@
 # Impact Analysis: Full Roadmap
 
+> **Historical snapshot.** Written before v0.2.0 implementation began (dated
+> analysis of a then-untested `MonitorConfigs` contract with "no automated
+> tests"). Retained as-is for historical record; it does not reflect the
+> current state (281 Python + 192 JS tests, v0.2.0/v0.2.1 shipped). See
+> `CHANGELOG.md` and `tasks/todo.md` for current status.
+
 ## Target
 
 The shared `MonitorConfigs` contract and every component that reads, writes, installs, removes or documents it.
